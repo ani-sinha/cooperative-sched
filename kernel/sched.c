@@ -319,6 +319,7 @@ struct cfs_rq {
 	struct list_head leaf_cfs_rq_list;
 	struct task_group *tg;	/* group that "owns" this runqueue */
 #endif
+
 };
 
 /* Real-Time classes' related field in a runqueue: */
@@ -481,6 +482,11 @@ struct rq {
 	unsigned int bkl_count;
 #endif
 	struct lock_class_key rq_lock_key;
+
+#if defined (CONFIG_SCHED_COOPREALTIME) 
+    struct bvtqueue bq;
+#endif
+
 };
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
@@ -1210,6 +1216,12 @@ static int task_hot(struct task_struct *p, u64 now, struct sched_domain *sd);
 #include "sched_stats.h"
 #include "sched_idletask.c"
 #include "sched_fair.c"
+
+#if defined(CONFIG_SCHED_COOPREALTIME)
+#include "sched_fairshare.c"
+#include "coop_poll.c"
+#endif
+
 #include "sched_rt.c"
 #ifdef CONFIG_SCHED_DEBUG
 # include "sched_debug.c"
@@ -1273,6 +1285,12 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int sleep)
 	p->se.on_rq = 0;
 }
 
+#if defined(CONFIG_SCHED_COOPREALTIME)
+#define default_sched_class (faircoop_sched_class)
+#else
+#define default_sched_class (fair_sched_class)
+#endif
+
 /*
  * __normal_prio - return the priority that is based on the static prio
  */
@@ -1329,6 +1347,7 @@ static void activate_task(struct rq *rq, struct task_struct *p, int wakeup)
 
 	enqueue_task(rq, p, wakeup);
 	inc_nr_running(p, rq);
+	
 }
 
 /*
@@ -1341,6 +1360,7 @@ static void deactivate_task(struct rq *rq, struct task_struct *p, int sleep)
 
 	dequeue_task(rq, p, sleep);
 	dec_nr_running(p, rq);
+
 }
 
 /**
@@ -1394,7 +1414,7 @@ task_hot(struct task_struct *p, u64 now, struct sched_domain *sd)
 {
 	s64 delta;
 
-	if (p->sched_class != &fair_sched_class)
+	if (p->sched_class != &default_sched_class)
 		return 0;
 
 	if (sysctl_sched_migration_cost == -1)
@@ -1938,7 +1958,7 @@ void sched_fork(struct task_struct *p, int clone_flags)
 	 */
 	p->prio = current->normal_prio;
 	if (!rt_prio(p->prio))
-		p->sched_class = &fair_sched_class;
+		p->sched_class = &default_sched_class;
 
 #if defined(CONFIG_SCHEDSTATS) || defined(CONFIG_TASK_DELAY_ACCT)
 	if (likely(sched_info_on()))
@@ -1981,6 +2001,7 @@ void wake_up_new_task(struct task_struct *p, unsigned long clone_flags)
 		 */
 		p->sched_class->task_new(rq, p);
 		inc_nr_running(p, rq);
+	
 	}
 	check_preempt_curr(rq, p);
 #ifdef CONFIG_SMP
@@ -4277,7 +4298,7 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 	if (rt_prio(prio))
 		p->sched_class = &rt_sched_class;
 	else
-		p->sched_class = &fair_sched_class;
+		p->sched_class = &default_sched_class;
 
 	p->prio = prio;
 
@@ -4462,7 +4483,7 @@ __setscheduler(struct rq *rq, struct task_struct *p, int policy, int prio)
 	case SCHED_NORMAL:
 	case SCHED_BATCH:
 	case SCHED_IDLE:
-		p->sched_class = &fair_sched_class;
+		p->sched_class = &default_sched_class;
 		break;
 	case SCHED_FIFO:
 	case SCHED_RR:
@@ -7228,7 +7249,7 @@ void __init sched_init(void)
 	/*
 	 * During early bootup we pretend to be a normal task:
 	 */
-	current->sched_class = &fair_sched_class;
+	current->sched_class = &default_sched_class;
 
 	scheduler_running = 1;
 }

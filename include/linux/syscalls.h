@@ -54,6 +54,9 @@ struct compat_stat;
 struct compat_timeval;
 struct robust_list_head;
 struct getcpu_cache;
+#if defined(CONFIG_SCHED_COOPREALTIME)
+struct coop_param_t;
+#endif
 
 #include <linux/types.h>
 #include <linux/aio_abi.h>
@@ -67,6 +70,9 @@ struct getcpu_cache;
 #include <linux/key.h>
 
 asmlinkage long sys_time(time_t __user *tloc);
+#if defined(CONFIG_SCHED_COOPREALTIME)
+asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param, struct coop_param_t __user *o_param,int dom_id);
+#endif
 asmlinkage long sys_stime(time_t __user *tptr);
 asmlinkage long sys_gettimeofday(struct timeval __user *tv,
 				struct timezone __user *tz);

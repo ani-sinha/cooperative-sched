@@ -907,4 +907,10 @@ void __init proc_misc_init(void)
 			entry->proc_fops = &proc_sysrq_trigger_operations;
 	}
 #endif
+
+#if defined (CONFIG_SCHED_COOPREALTIME)
+	create_seq_entry("bvtstat",S_IRUGO , &proc_bvtstat_operations);
+#endif
+
+
 }

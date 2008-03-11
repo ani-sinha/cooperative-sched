@@ -1,6 +1,10 @@
 #ifndef _LINUX_SCHED_H
 #define _LINUX_SCHED_H
 
+#if defined(CONFIG_SCHED_COOPREALTIME)
+#include <linux/coop_fairshare_sched.h>
+#endif
+
 /*
  * cloning flags:
  */
@@ -970,6 +974,8 @@ struct sched_entity {
 	/* rq "owned" by this entity/group: */
 	struct cfs_rq		*my_q;
 #endif
+
+
 };
 
 struct sched_rt_entity {
@@ -1267,6 +1273,11 @@ struct task_struct {
 	int latency_record_count;
 	struct latency_record latency_record[LT_SAVECOUNT];
 #endif
+#if defined (CONFIG_SCHED_COOPREALTIME) 
+	/* The fairshare struct to store pvt info for this scheduler*/
+   struct coop_fairshare_struct cf;
+#endif
+
 };
 
 /*

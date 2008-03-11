@@ -648,6 +648,11 @@ asmlinkage void __init start_kernel(void)
 	taskstats_init_early();
 	delayacct_init();
 
+#if defined(CONFIG_SCHED_COOPREALTIME)
+	coop_init();
+	bvt_global_init();
+#endif
+
 	check_bugs();
 
 	populate_rootfs(); /* For DSDT override from initramfs */

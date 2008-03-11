@@ -1185,7 +1185,11 @@ static void set_curr_task_rt(struct rq *rq)
 }
 
 const struct sched_class rt_sched_class = {
+#if defined(CONFIG_SCHED_COOPREALTIME)
+	.next 			=&faircoop_sched_class,
+#else
 	.next			= &fair_sched_class,
+#endif
 	.enqueue_task		= enqueue_task_rt,
 	.dequeue_task		= dequeue_task_rt,
 	.yield_task		= yield_task_rt,
