@@ -123,7 +123,6 @@ struct bvtqueue
 
 struct bvt_struct
 {
-	int                           is_bvt_task;
    	struct timespec               bvt_timeslice_start;
 	struct timespec               bvt_timeslice_end;
 	
@@ -138,7 +137,7 @@ struct bvt_struct
  * under our scheduling regime.
  */
 
-#define is_bvt(p) (p)->cf.bvt_t.is_bvt_task 
+#define is_bvt(p) (p->sched_class == &faircoop_sched_class) 
 
 #ifdef CONFIG_HIGH_RES_TIMERS
 #define bvt_timer_cancel(timer) hrtimer_cancel(timer); 
@@ -171,7 +170,7 @@ void remove_task_from_bvt_queue(struct bvtqueue *bq,
 void do_policing(struct bvtqueue *bq, 
 		 struct task_struct *tsk);
 
-void set_tsk_as_besteffort(struct bvtqueue*,struct task_struct*);
+void init_bvt_domain(struct bvtqueue*,struct task_struct*);
 
 void tv_fairshare_now_adjusted(struct timeval*);
 

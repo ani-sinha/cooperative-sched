@@ -1491,8 +1491,8 @@ long do_fork(unsigned long clone_flags,
 		#if defined(CONFIG_SCHED_COOPREALTIME)
         coop_proc_init(p);
         bvt_proc_init(p);
-        set_tsk_as_besteffort(cpu_bq(task_cpu(p)),p);
-        #endif
+        init_bvt_domain(cpu_bq(task_cpu(p)),p);
+		#endif
 
 		nr = task_pid_vnr(p);
 

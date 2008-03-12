@@ -82,6 +82,64 @@ struct timespec ts_max_fudge;
 
 #define BVT_HEAP_INIT_CAP 1024
 
+/* Forward declarations */
+static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup);
+static void dequeue_task_faircoop(struct rq *rq, struct task_struct *p,int sleep);
+static void yield_task_faircoop(struct rq *rq);
+static void check_preempt_faircoop(struct rq* rq, struct task_struct *p);
+static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq);
+static void __sched update_bvt_prev(struct rq *rq, struct task_struct *prev);
+static void set_curr_task_faircoop(struct rq *rq);
+static void task_tick_faircoop(struct rq *rq, struct task_struct *curr);
+static void task_new_faircoop(struct rq *rq, struct task_struct *p);
+static void switched_from_faircoop(struct rq *this_rq, struct task_struct *task, int running);
+static void switched_to_faircoop(struct rq *this_rq, struct task_struct *task, int running);
+static void prio_changed_faircoop(struct rq* this_rq, struct task_struct *task, int oldprio, int running);
+
+#ifdef CONFIG_SMP
+static unsigned long
+load_balance_faircoop(struct rq *this_rq, int this_cpu, struct rq *busiest,
+		  unsigned long max_load_move,
+		  struct sched_domain *sd, enum cpu_idle_type idle,
+		  int *all_pinned, int *this_best_prio);
+
+
+static int
+move_one_task_faircoop(struct rq *this_rq, int this_cpu, struct rq *busiest,
+		   struct sched_domain *sd, enum cpu_idle_type idle);
+
+static void select_task_rq_faircoop(struct task_struct *p, int sync);
+static void join_domain_faircoop(struct rq* rq);
+static void leave_domain_faircoop(struct rq* rq);
+#endif
+
+/* Scheduling class struct */
+static const struct sched_class faircoop_sched_class = {
+	.next = &fair_sched_class,
+	.enqueue_task = bvt_borrow,
+	.dequeue_task = dequeue_task_faircoop,
+	.yield_task = yield_task_faircoop,
+	.check_preempt_curr = check_preempt_faircoop,
+	.pick_next_task = pick_next_task_arm_timer,
+	.put_prev_task = update_bvt_prev,
+	.set_curr_task = set_curr_task_faircoop,
+	.task_tick = task_tick_faircoop,
+	.task_new = task_new_faircoop,
+
+#ifdef CONFIG_SMP
+	.load_balance 	= load_balance_faircoop,
+	.move_one_task 	= move_one_task_faircoop,
+	.select_task_rq = select_task_rq_faircoop,
+	.join_domain = join_domain_faircoop,
+	.leave_domain = leave_domain_faircoop
+#endif
+
+	.prio_changed = prio_changed_faircoop,
+	.switched_to = switched_to_faircoop,
+	.switched_from = switched_from_faircoop
+};
+
+
 inline struct bvtqueue* get_task_bq_locked(struct task_struct *tsk, 
 					   unsigned long *flags) 
 {
@@ -322,11 +380,12 @@ static void calculate_bvt_period(struct task_struct *next)
  * The scheduling class enqueue function is supposed to set the 
  * on_rq flag
  */
-void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
+static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 {
 	struct fairshare_sched_param          *top_node = NULL;
 	struct timeval                        tv_zero = { .tv_sec = 0, .tv_usec = 0};
-	
+	struct bvtqueue* bq;
+
 	if(rq == NULL) {
 		printk(KERN_ERR "rq null\n");
 		return;
@@ -341,7 +400,8 @@ void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 		printk(KERN_ERR "Task is not in faircoop scheduling class\n");
 		return;
 	}
-	struct bvtqueue *bq = &rq->bq;
+	
+	bq = &rq->bq;
 
 	p->cf.bvt_dom->num_tasks++;
 
@@ -863,7 +923,7 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
  * structure in the runqueue @prev: the pointer to the task_struct of
  * the process we want to context switch from.
  */
-void __sched update_bvt_prev(struct rq *rq, struct task_struct *prev) 
+static void __sched update_bvt_prev(struct rq *rq, struct task_struct *prev) 
 {
 	struct bvtqueue *bq = &rq->bq;
 
@@ -904,7 +964,7 @@ void __sched update_bvt_prev(struct rq *rq, struct task_struct *prev)
  *         1: Arm timeout timer 
  */
 
-struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
+static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 {
 	struct bvtqueue *bq = &rq->bq;
 	struct task_struct *next = NULL;
@@ -954,7 +1014,7 @@ void inline remove_task_from_bvt_queue(struct bvtqueue *bq,
  * called from one place: __do_set_bvt(); @tsk: the task_struct for
  * the task
  */
-void set_tsk_as_besteffort(struct bvtqueue *bq, 
+void init_bvt_domain(struct bvtqueue *bq, 
 				  struct task_struct* tsk)
 {
 	/* multiple calls to this function should not 
@@ -963,16 +1023,6 @@ void set_tsk_as_besteffort(struct bvtqueue *bq,
 	if (tsk->cf.bvt_dom == &(bq->bvt_domains[DOM_BEST_EFFORT]))
 		return;
 
-#if defined(CONFIG_SMP)
-	/* I personally hate to do this, but right now, we do not handle
-	 * CPU migration in our scheduler. Hence this hack. 
-	 */
-	{
-		cpumask_t mask;
-		cpu_set(task_cpu(tsk), mask);
-		sched_setaffinity(tsk->pid,mask);
-	}
-#endif
 	/* register this task as belonging to the 
 	 * best effort domain 
 	 */
@@ -983,7 +1033,6 @@ void set_tsk_as_besteffort(struct bvtqueue *bq,
 	 * the individual task 
 	 */
 	tsk->cf.task_sched_param = &tsk->cf.bvt_t.private_sched_param;
-	tsk->cf.bvt_t.is_bvt_task = 1;
 }
 /* set_tsk_as_besteffort */
 
@@ -1274,6 +1323,18 @@ move_one_task_faircoop(struct rq *this_rq, int this_cpu, struct rq *busiest,
 {
 	return 0;
 }
+
+static void select_task_rq_faircoop(struct task_struct *p, int sync)
+{
+}
+
+static void join_domain_faircoop(struct rq *rq)
+{
+}
+
+static void leave_domain_faircoop(struct rq* rq)
+{
+}
 #endif
 
 static void task_tick_faircoop(struct rq *rq, struct task_struct *curr)
@@ -1282,15 +1343,9 @@ static void task_tick_faircoop(struct rq *rq, struct task_struct *curr)
 
 static void set_curr_task_faircoop(struct rq *rq)
 {
-/* This function is called whenever a task changes scheduling classes or groups */
-/* Since our scheduler doesn't support the notion of groups as of now */
-if (!is_bvt(rq->curr)) {
-	task_new_faircoop(rq,rq->curr);
 }
 
-}
-
-void yield_task_faircoop(struct rq *rq)
+static void yield_task_faircoop(struct rq *rq)
 {
 /* Dequeue, and then enqueue the task */
 struct task_struct* temp;
@@ -1299,27 +1354,23 @@ dequeue_task_faircoop(rq,temp,0);
 bvt_borrow(rq,temp,0);
 }
 
-void check_preempt_faircoop(struct rq* rq, struct task_struct *p)
+static void check_preempt_faircoop(struct rq* rq, struct task_struct *p)
 {
 }
 
-static const struct sched_class faircoop_sched_class = {
-	.next = &fair_sched_class,
-	.enqueue_task = bvt_borrow,
-	.dequeue_task = dequeue_task_faircoop,
-	.yield_task = yield_task_faircoop,
-	.check_preempt_curr = check_preempt_faircoop,
-	.pick_next_task = pick_next_task_arm_timer,
-	.put_prev_task = update_bvt_prev,
-	.set_curr_task = set_curr_task_faircoop,
-	.task_tick = task_tick_faircoop,
-	.task_new = task_new_faircoop,
-#ifdef CONFIG_SMP
-	.load_balance 	= load_balance_faircoop,
-	.move_one_task 	= move_one_task_faircoop,
-#endif
+static void prio_changed_faircoop(struct rq* this_rq, struct task_struct *task, int oldprio, int running)
+{
+}
 
-};
+
+static void switched_from_faircoop(struct rq *this_rq, struct task_struct *task, int running)
+{
+}
+
+static void switched_to_faircoop(struct rq *this_rq, struct task_struct *task, int running)
+{
+}
+
 
 #endif
 
