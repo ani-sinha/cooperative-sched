@@ -105,6 +105,8 @@ static void cpa_flush_all(unsigned long cache)
 	on_each_cpu(__cpa_flush_all, (void *) cache, 1, 1);
 }
 
+EXPORT_SYMBOL(cpa_flush_all);
+
 static void __cpa_flush_range(void *arg)
 {
 	/*
