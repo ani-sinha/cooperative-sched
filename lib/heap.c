@@ -1,4 +1,3 @@
-
 /* Nov 2006: This is a generic heap library has been ported from the userlevel
  * heap implementation in Qstream (http://www.qstream.org)
  * Parts of the code uses userlevel glib library keywords that has
@@ -39,10 +38,26 @@
 #include <linux/hardirq.h>
 
 #define HEAP_EXPANSION_FACTOR 2
-
 #ifndef MAX
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #endif
+
+//static inline void heap_is_correct(heap_t *heap) __attribute__((always_inline));
+
+#define heap_is_correct(heap) do { \
+	gint __i; \
+	if(bvt_sched_tracing == 3 && ( !irqs_disabled()) ) {\
+		printk(KERN_ERR "Preemption/Irq enabled at %s line %d, \
+		irq = %d, preempt = %d\n", __func__, __LINE__, irqs_disabled(), preempt_count()); \
+		BUG(); \
+	} \
+	for(__i=1;__i<=heap->size;__i++) \
+		if(!(heap->nodes[__i]->key)) { \
+			printk(KERN_ERR "Heap got fucked at %s line %d, index with null entry = %d,heap size = %d\n",__func__,__LINE__, __i,heap->size); \
+			dump_stack(); \
+			panic("Halting"); \
+		} \
+	} while(0)
 
 #if 0
 void heap_is_correct(heap_t *heap)
@@ -62,7 +77,7 @@ void heap_is_correct(heap_t *heap)
 /* heap_is_correct */
 #endif
 
-void heap_is_correct(heap_t *heap) {}
+//void heap_is_correct(heap_t *heap) {}
 
 /* heap_is_correct */
 
@@ -189,7 +204,9 @@ int heap_ensure_capacity(heap_t *heap, gint capacity)
 
 	return grow_heap(heap, capacity);
 } /* heap_ensure_capacity */
-    
+  
+/* Cannot use this, as this may call realloc, which may sleep, This code is run in interrupt context */
+#if 0
 heap_node *heap_insertt(heap_t *heap, heap_key_t key, heap_data_t data)
 {
 	gint i;
@@ -230,15 +247,19 @@ heap_node *heap_insertt(heap_t *heap, heap_key_t key, heap_data_t data)
 	
 
 } /* heap_insert */
+#endif
 
-
-heap_node *heap_insert_nogrow(heap_t *heap, heap_key_t key, heap_data_t data)
+heap_node *heap_insertt(heap_t *heap, heap_key_t key, heap_data_t data)
 {
 	gint i;
 	heap_node* node;
 
-	heap_is_correct(heap);
+	g_assert(heap);
+	g_assert(key);
+	g_assert(data);
 
+	heap_is_correct(heap);
+	
 	if (heap->size == heap->capacity) {
 		printk(KERN_ERR "insufficient space in heap");
 		dump_stack();

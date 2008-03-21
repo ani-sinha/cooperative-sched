@@ -163,6 +163,9 @@ enum
 	KERN_MAX_LOCK_DEPTH=74,
 	KERN_NMI_WATCHDOG=75, /* int: enable/disable nmi watchdog */
 	KERN_PANIC_ON_NMI=76, /* int: whether we will panic on an unrecovered */
+#if defined(CONFIG_SCHED_COOPREALTIME)
+	KERN_SCHED_TRACING=77, /*int: to control faircoop sched tracing */
+#endif
 };
 
 

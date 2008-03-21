@@ -234,6 +234,16 @@ static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
 #endif
 
 static struct ctl_table kern_table[] = {
+#if defined(CONFIG_SCHED_COOPREALTIME)
+	{
+	.ctl_name   = KERN_SCHED_TRACING,
+	.procname   = "bvt_sched_tracing",
+	.data       = &bvt_sched_tracing,
+	.maxlen     = sizeof(unsigned int),
+	.mode       = 0644,
+	.proc_handler   = &proc_dointvec,
+	},
+#endif
 #ifdef CONFIG_SCHED_DEBUG
 	{
 		.ctl_name	= CTL_UNNUMBERED,
@@ -312,14 +322,6 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= &proc_dointvec,
 	},
 #endif
-	{
-		.ctl_name	= CTL_UNNUMBERED,
-		.procname	= "sched_rt_period_us",
-		.data		= &sysctl_sched_rt_period,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= &proc_dointvec,
-	},
 	{
 		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "sched_rt_runtime_us",

@@ -910,6 +910,7 @@ void __init proc_misc_init(void)
 
 #if defined (CONFIG_SCHED_COOPREALTIME)
 	create_seq_entry("bvtstat",S_IRUGO , &proc_bvtstat_operations);
+	create_seq_entry("coopstat",S_IRUGO, &proc_coopstat_operations);
 #endif
 
 

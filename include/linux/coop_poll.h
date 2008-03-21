@@ -177,7 +177,6 @@ extern inline int is_coop_realtime(struct task_struct* tsk);
 
 /* used in fs/proc/proc_misc.c */
 extern struct file_operations proc_coopstat_operations;
-
 void find_nearest_global_deadline(struct task_struct **w_dead);
 void find_nearest_global_asap(struct task_struct **w_asap);
 void find_nearest_global_deadline_overall(struct task_struct **overall);

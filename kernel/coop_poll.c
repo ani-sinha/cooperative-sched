@@ -94,9 +94,11 @@ static inline void cq_unlock(struct bvtqueue *bq,
 {
 	put_task_bq_locked(bq, flags);
 }
+#define COOP_DEBUG "[COOP_POLL]"
 
-#define COOP_DEBUG "COOP DEBUGGING NOT ENABLED"
-#define coop_print_debug(fmt,arg...) do {} while(0);
+#define coop_print_debug(fmt,arg...) do { \
+		print_debug(COOP_DEBUG,fmt,##arg);   \
+	}while(0);
 
 inline int is_coop_realtime(struct task_struct* p) {
 
@@ -366,11 +368,11 @@ static void set_tsk_as_coop(struct task_struct* tsk, int dom_id)
 
 	set_coop_task(tsk);
 
-        /* Now set the task's domain as the real time domain */
+    /* Now set the task's domain as the real time domain */
 	tsk->cf.bvt_dom = &(bq->bvt_domains[dom_id]);
 	tsk->cf.dom_id  = dom_id;
         
-        /* the task virtual time is now the same as the domain virtual
+     /* the task virtual time is now the same as the domain virtual
 	 * time
 	 */
 	tsk->cf.task_sched_param = &bq->bvt_domains[dom_id].dom_sched_param;
@@ -774,7 +776,7 @@ void set_normalized_timeval(struct timeval *tv,
  * @flags: The IRQ flags saved previously.
  * @time: The amount of time to sleep in ktime_t.
  */
-static ktime_t cooperative_highres_sleeper(struct bvtqueue *bq, 
+static void __sched cooperative_highres_sleeper(struct bvtqueue *bq, 
 					   unsigned long *flags, 
 					   ktime_t time)
 {
@@ -786,20 +788,17 @@ static ktime_t cooperative_highres_sleeper(struct bvtqueue *bq,
 	
 	set_current_state(TASK_UNINTERRUPTIBLE);
 	hrtimer_start(&t.timer, time, HRTIMER_MODE_REL);
-
-	cq_unlock(bq, flags);
+	if (!hrtimer_active(&t.timer))
+		t.task = NULL;
 
 	if (likely(t.task))
 		schedule();
 	
 	hrtimer_cancel(&t.timer);
+
+	__set_current_state(TASK_RUNNING);
+		
 	
-	remain = hrtimer_get_remaining(&t.timer);
-	
-	if (ktime_to_ns(remain) < 0)
-		return ktime_set(0, 0);
-	else
-		return remain;
 }
 /* cooperative_highres_sleeper */
 
@@ -832,9 +831,9 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	unsigned long flags;
 	int flg;
 	int valid_dom_id = 0;
-	
-	struct timeval tv_now, tv_diff;	
-	struct timespec tomono;
+	mm_segment_t fs;
+	struct timeval tv_now;	
+	struct timespec tomono,tv_diff;
 	coop_queue *cq;	
 	struct bvtqueue *bq;
 	struct task_struct *w_asap;
@@ -867,7 +866,7 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	}
 
 	if(!is_bvt(current)) {
-		printk(KERN_ERR "Current task is not a faircoop scheduling class\n");
+		printk(KERN_ERR "Current task is not in faircoop scheduling class\n");
 		return -EINVAL;
 	}
 
@@ -976,13 +975,19 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	if (!flg && timeval_compare(&ki_param.t_deadline,&tv_now) > 0) {
 	
 		/* calculate the time difference */
-		set_normalized_timeval(&tv_diff, 
+		set_normalized_timespec(&tv_diff, 
 				       ki_param.t_deadline.tv_sec  - tv_now.tv_sec,
-				       ki_param.t_deadline.tv_usec - tv_now.tv_usec);
+				       (ki_param.t_deadline.tv_usec - tv_now.tv_usec)*1000);
 		if (bvt_sched_tracing)
 			printk(KERN_INFO "Task %d going into cooperative sleep\n",current->pid);
 	
-		cooperative_highres_sleeper(bq, &flags, timeval_to_ktime(tv_diff));
+		fs = get_fs();
+		set_fs(get_ds());
+		cq_unlock(bq,&flags);
+		/* TODO Take care of the call being interrupted by a signal */
+		sys_nanosleep(&tv_diff,NULL);
+		set_fs(fs);
+		//cooperative_highres_sleeper(bq, &flags, timeval_to_ktime(tv_diff));
 		goto wakeup;
 	}
 
@@ -1097,7 +1102,7 @@ gboolean coop_poll_asap_gt(heap_key_t a, heap_key_t b)
 gboolean coop_poll_timeout_gt(heap_key_t a, heap_key_t b)
 {
 	struct task_struct *ev_a = a;
-        struct task_struct *ev_b = b;
+    struct task_struct *ev_b = b;
 
 	g_assert(ev_a);
 	g_assert(ev_b);

@@ -115,7 +115,7 @@ static void leave_domain_faircoop(struct rq* rq);
 
 /* Scheduling class struct */
 static const struct sched_class faircoop_sched_class = {
-	.next = &fair_sched_class,
+	.next = &idle_sched_class,
 	.enqueue_task = bvt_borrow,
 	.dequeue_task = dequeue_task_faircoop,
 	.yield_task = yield_task_faircoop,
@@ -293,7 +293,7 @@ static void find_fairshare_period(suseconds_t *fair_share_period,
 {
 	struct bvtqueue *bq;
 	unsigned long  nr_tasks;
-	unsigned long  nr_besteffort;
+	unsigned long  nr_besteffort = 0;
 	unsigned long nr_realcoop = 0;
 	int dom_id;
 
@@ -310,7 +310,7 @@ static void find_fairshare_period(suseconds_t *fair_share_period,
 	if (nr_tasks) {
 		*fair_share_period = bvt_sched_granularity / nr_tasks;
 	}else {
-		printk (KERN_ERR "undefined fair share period: impossible");
+		printk (KERN_ERR "undefined fair share period: impossible, nrtasks = %d\n",nr_tasks);
 		BUG();
 	}
 	if (is_coop_realtime(next)) {
@@ -495,7 +495,7 @@ static void update_virtual_times(struct task_struct *p)
 	set_normalized_timespec(&bq->tot_time,bq->tot_time.tv_sec + ts_delta.tv_sec,bq->tot_time.tv_nsec + ts_delta.tv_nsec);
 
 	/* Convert actual time to jiffies using HZ, and override utime value*/
-	p->utime = jiffies_to_cputime(timespec_to_jiffies(&p->cf.bvt_t.private_sched_param.bvt_actual_time));
+	//p->utime = jiffies_to_cputime(timespec_to_jiffies(&p->cf.bvt_t.private_sched_param.bvt_actual_time));
 	
 	cputime = jiffies_to_cputime(timespec_to_jiffies(&bq->tot_time));
 	cpustat = &kstat_this_cpu.cpustat;
@@ -578,9 +578,9 @@ static enum hrtimer_restart handle_bvt_timeout(struct hrtimer *timer)
 } /*  handle_bvt_timeout */
 
 #else 
+#if 0
 /* this is the old shitty jiffy level timer part only kept for those
  * kernels that do not have highres timer support. */
-
 static void handle_bvt_timeout(unsigned long __data)
 {
  	struct task_struct *p = (struct task_struct*) __data;
@@ -609,7 +609,7 @@ static void handle_bvt_timeout(unsigned long __data)
  	set_tsk_need_resched(p); 
 
 } /*  handle_bvt_timeout */
-
+#endif
 #endif
 
 /* The following function schedules a dynamic 
@@ -656,7 +656,7 @@ void schedule_dynamic_bvt_timer(struct bvtqueue *bq,
 	
 	hrtimer_init(&bq->bvt_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 	bq->bvt_timer.expires  = timespec_to_ktime(deadline);
-	bq->bvt_timer.function = &handle_bvt_timeout;
+	bq->bvt_timer.function = handle_bvt_timeout;
 	/* Use the irqsafe_no_softirq callback mode*/
 	bq->bvt_timer.cb_mode = HRTIMER_CB_IRQSAFE_NO_SOFTIRQ;
 	hrtimer_start(&bq->bvt_timer, bq->bvt_timer.expires,HRTIMER_MODE_ABS);
@@ -975,8 +975,7 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 	} /* if */
 
 	if (unlikely(heap_is_empty(bq->bvt_heap))) {
-		next = NULL;
-		return next;
+		return NULL;
 	}
 	
 	next = choose_next_bvt(bq);
@@ -1343,6 +1342,8 @@ static void task_tick_faircoop(struct rq *rq, struct task_struct *curr)
 
 static void set_curr_task_faircoop(struct rq *rq)
 {
+	fairshare_now(&current->cf.bvt_t.bvt_timeslice_start);
+	set_tsk_need_resched(current);
 }
 
 static void yield_task_faircoop(struct rq *rq)
