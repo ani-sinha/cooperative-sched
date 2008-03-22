@@ -228,7 +228,7 @@ static long __insert_into_coop_sleep_heap(coop_queue *cq,struct task_struct *p)
 {
 	p->cf.coop_t.coop_sleep_deadline_node = heap_insertt(cq->heap_coop_sleep, p, p);
 	/* Insert onto the global deadline heap */
-	p->cf.coop_t.coop_sleep_deadline_global_heap_node = heap_insertt((get_task_bq(p)->global_coop_deadline_heap),p,p);
+	p->cf.coop_t.coop_sleep_deadline_global_heap_node = heap_insertt((get_task_bq(p)->global_coop_sleep_heap),p,p);
 	
 	if(unlikely ( (!p->cf.coop_t.coop_sleep_deadline_node) || (!p->cf.coop_t.coop_sleep_deadline_global_heap_node)  ))  {
 		coop_print_debug("%s, %s:%d: Unable to allocate new memory for the new deadline_sleep heap node!",
@@ -421,7 +421,7 @@ static void __rem_task_from_coop_sleep_cq(coop_queue *cq, struct task_struct *ts
 {
 	heap_delete(cq->heap_coop_sleep, 
 		    tsk->cf.coop_t.coop_sleep_deadline_node);
-	heap_delete(get_task_bq(tsk)->global_coop_deadline_heap, 
+	heap_delete(get_task_bq(tsk)->global_coop_sleep_heap, 
 		    tsk->cf.coop_t.coop_sleep_deadline_global_heap_node);
 } /* __rem_task_from_coop_sleep_cq */
 
@@ -509,98 +509,67 @@ static inline void find_nearest_asap(coop_queue *cq, struct task_struct **w_asap
 	}
 } /* find_nearest_asap */
 
-/* finds the global coop deadline */
-void find_nearest_global_deadline(struct task_struct **w_dead) 
+
+/* Return the nearest runnable global deadline task */
+void find_nearest_global_deadline(struct task_struct **overall)
 {
-	int dom_id;
-	coop_queue *cq;
-	struct task_struct *node = NULL;
-	
-	cq    = cpu_cq(smp_processor_id(), DOM_REALTIME_COOP0);
-	
-	find_nearest_deadline(cq, w_dead);
-	
-	/* This is an O(1) algorithm for fixed number of domains */
-
-	for_each_available_coop_domain(dom_id) {
-		if (dom_id == 0) continue;
-		cq = cpu_cq(smp_processor_id(), dom_id);
-	
-		node = NULL;
-		find_nearest_deadline(cq, &node);
-
-		if (node && (*w_dead))
-		{
-			if (coop_poll_timeout_gt(*w_dead,node)) {
-				*w_dead = node;
-			}
-		}
-		else if (node) {
-			*w_dead = node; 
-		} 
+	struct bvtqueue* bq = cpu_bq(smp_processor_id());
+	if (!heap_is_empty(bq->global_coop_deadline_heap)) {
+		*overall = (struct task_struct*) heap_min_data(bq->global_coop_deadline_heap);
 	}
-} /* find_nearest_global_deadline */
+	else *overall = NULL;
+}
 
-/* Find the highest priority asap event, among all the coop domains */
-void find_nearest_global_asap(struct task_struct **w_asap)
+void find_nearest_global_sleep(struct task_struct **overall)
 {
-	int dom_id;
-	coop_queue *cq;
-	struct task_struct *node = NULL;
-	
-	cq    = cpu_cq(smp_processor_id(), DOM_REALTIME_COOP0);
-	
-	find_nearest_asap(cq, w_asap);
-	
-	/* This is an O(1) algorithm for fixed number of domains */
-
-	for_each_available_coop_domain(dom_id) {
-		if (dom_id == 0) continue;
-		cq = cpu_cq(smp_processor_id(), dom_id);
-	
-		node = NULL;
-		find_nearest_asap(cq, &node);
-
-		if (node && (*w_asap))
-		{
-			if (coop_poll_asap_gt(*w_asap,node)) {
-				*w_asap = node;
-			}
-		}
-		else if (node) {
-			*w_asap = node; 
-		} 
+	struct bvtqueue* bq = cpu_bq(smp_processor_id());
+	if (!heap_is_empty(bq->global_coop_sleep_heap)) {
+		*overall = (struct task_struct*) heap_min_data(bq->global_coop_sleep_heap);
 	}
-
+	else *overall = NULL;
 
 }
 
-/* Locks: Call with runQ lock held 
- * Return: Task with earliest global deadline or
- * 	   Null if heap is empty */
+ /* Return: Task with earliest global deadline (considering both runnable and sleeping tasks) or
+  * Null if heap is empty */
 void find_nearest_global_deadline_overall(struct task_struct **overall)
 {
-struct bvtqueue* bq = cpu_bq(smp_processor_id());
-if (!heap_is_empty(bq->global_coop_deadline_heap))
-	{
-	*overall = (struct task_struct*) heap_min_data(bq->global_coop_deadline_heap);
+	struct task_struct *temp1;
+	struct task_struct *temp2;
+
+	find_nearest_global_deadline(&temp1);
+	find_nearest_global_sleep(&temp2);
+
+	if (temp1 && temp2) {
+		if (timeval_compare(&temp1->cf.coop_t.dead_p.t_deadline, 
+					        &temp2->cf.coop_t.dead_p.t_deadline) < 0)
+			*overall = temp1;
+		else
+			*overall = temp2;
 	}
-else *overall = NULL;
+	else if (temp1) 
+		*overall = temp1;
+	else if(temp2)
+		*overall = temp2;
+	else 
+		*overall = NULL;
 }
 
 void find_second_nearest_global_deadline_overall(struct task_struct **overall)
 {
-struct bvtqueue* bq = cpu_bq(smp_processor_id());
-struct task_struct *temp;
-if (bq->global_coop_deadline_heap->size > 1)
-	{
-	// Remove the top element
-	temp = (struct task_struct*)heap_delete_min(bq->global_coop_deadline_heap);	
-	*overall = (struct task_struct*) heap_min_data(bq->global_coop_deadline_heap);
+	struct bvtqueue* bq = cpu_bq(smp_processor_id());
+	struct task_struct *temp1;
+	
+	if (!heap_is_empty(bq->global_coop_deadline_heap)) {
+	// Remove the top element of the global deadline heap
+	temp1 = (struct task_struct*)heap_delete_min(bq->global_coop_deadline_heap);	
+	find_nearest_global_deadline_overall(overall);
 	// Re-insert top element into the heap
-	heap_insertt(bq->global_coop_deadline_heap,temp,temp);
+	heap_insertt(bq->global_coop_deadline_heap,temp1,temp1);
 	}
-else *overall = NULL;
+	else 
+		find_nearest_global_sleep(overall);
+	
 }
 
 static inline void find_nearest_coop_sleep_deadline(coop_queue *cq, 

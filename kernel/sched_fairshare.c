@@ -67,7 +67,6 @@ volatile unsigned int bvt_sched_tracing;
 /*volatile struct timespec ts_fudge;*/
 
 struct timespec ts_bvt_min_timeslice;
-struct timespec ts_max_fudge;
 
 /* End of read only global data */
 
@@ -797,7 +796,7 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
 	/* Store the actual value for the min_virt_time for the system, before incorporating slack*/
 	
 	min_virt_time = &(next->cf.task_sched_param->bvt_virtual_time);
-	find_nearest_global_deadline_overall(&next_earliest_deadline_task);
+	find_nearest_global_deadline(&next_earliest_deadline_task);
 	set_normalized_timespec(&ts_fudge,0,bvt_sched_granularity*NSEC_PER_USEC);
 
 	/* Returns the wall time */
@@ -1047,7 +1046,7 @@ void do_policing(struct bvtqueue *bq, struct task_struct *tsk)
 	g_assert(bq);
 	g_assert(is_coop_realtime(tsk)); 
 
-	if(bvt_sched_tracing)
+	if(bvt_sched_tracing == 1)
 		printk(KERN_INFO "Task %d is being policed\n",tsk->pid);
 	
 	/* register this task as belonging to the 
@@ -1105,6 +1104,7 @@ void __init bvt_global_init()
 	int cpu,j;
 	heap_t *temp1;
 	heap_t *temp2;
+	heap_t *temp3;
 
 	bvt_sched_granularity = (suseconds_t) CONFIG_BVTPRD;
 	bvt_sched_tracing = 0; /* Off by default */
@@ -1116,12 +1116,13 @@ void __init bvt_global_init()
 		 * region (Cannot sleep while holding a lock) */
 		temp1 = create_heap(bvt_timeout_gt, BVT_HEAP_INIT_CAP);
 		temp2 = create_heap(coop_poll_timeout_gt, BVT_HEAP_INIT_CAP);
-		
+		temp3 = create_heap(coop_poll_timeout_gt, BVT_HEAP_INIT_CAP);	
 		bq = get_cpu_bq_locked(cpu, &flags);
 		/* XXX All these heap sizes should be fixed dynamically 
 		 * in the future, depending on total memory available */
 		bq->bvt_heap  =	temp1;
 		bq->global_coop_deadline_heap = temp2;
+		bq->global_coop_sleep_heap = temp3;
 
 		if (unlikely(!bq->bvt_heap) || 
 		unlikely(!bq->global_coop_deadline_heap)) {
@@ -1153,7 +1154,6 @@ void __init bvt_global_init()
 		bq->isTargetSet = -1;
 		bq->fudged_flag = false;
 		/*set_normalized_timespec(&ts_fudge,0,bvt_sched_granularity);*/
-		set_normalized_timespec(&ts_max_fudge,0,COOP_DEAD_FUDGE_MAX);
 		set_normalized_timespec(&bq->ts_slack,0,COOP_DEAD_SLACK);
 		bq->count = 0;
 		bq->adj=0;
@@ -1216,7 +1216,6 @@ static int show_bvtstat(struct seq_file *seq, void *v) {
 		seq_printf(seq, "fudge: %ld\n", bq->fudge);
 		seq_printf(seq, "nofudge: %ld\n", bq->nofudge);
 		seq_printf(seq, "Current Fudge in nsecs = %ld000\n", bvt_sched_granularity);
-		seq_printf(seq, "Current max fudge in = %u.%u\n",ts_max_fudge.tv_sec,ts_max_fudge.tv_nsec);
 	}
 
 	seq_printf(seq, "minimum bvt period = %ld usec\n", (long) BVT_MIN_TIMESLICE);
@@ -1287,8 +1286,8 @@ static void dequeue_task_faircoop(struct rq *rq, struct task_struct *p,int sleep
          * is getting deactivated.
          */
         test_remove_task_from_coop_bvt_queues(p,&(bq->cq[dom_id]));
-     
-        if (!p->exit_state) {
+    	/* Only check for policing, if the task is going to sleep */ 
+        if (!p->exit_state && sleep) {
             if(!p->cf.coop_t.is_well_behaved) {
                 do_policing(bq,p);
             }

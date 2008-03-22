@@ -18,8 +18,6 @@
 extern struct timespec ts_bvt_min_timeslice;
 extern volatile suseconds_t bvt_sched_granularity;
 extern volatile unsigned int bvt_sched_tracing;
-/*extern struct timespec ts_fudge;*/
-extern struct timespec ts_max_fudge;
 
 #define BVT_LOG_BUF_SIZE 1024
 #define CONFIG_BVTPRD 20000
@@ -63,6 +61,7 @@ struct bvtqueue
 {
 	heap_t*   bvt_heap;
 	heap_t*   global_coop_deadline_heap; /* Per cpu global heap for storing all the deadline events */
+	heap_t*	  global_coop_sleep_heap; /* Per cpu global heap for storing deadlines for all sleeping coop tasks*/
 	/* The pointer to the running bvt task */
 	struct task_struct *running_bvt_task;
 
