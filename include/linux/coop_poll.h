@@ -192,8 +192,6 @@ long insert_into_coop_heaps(coop_queue *cq,
 void choose_next_coop(struct task_struct** target_task, int dom_id);
 void test_remove_task_from_coop_bvt_queues(struct task_struct *tsk, 
 					   coop_queue *cq);
-void remove_task_from_coop_sleep_queue(struct task_struct *tsk, 
-				       coop_queue *cq);
 void find_next_nearest_global_deadlines(struct task_struct *next_earliest_deadline_task,struct task_struct **next_to_next_earliest_deadline_task);
 void find_second_nearest_global_deadline_overall(struct task_struct **overall);
 void set_normalized_timeval(struct timeval *tv, time_t sec, long usec);

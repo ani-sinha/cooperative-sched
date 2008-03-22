@@ -399,32 +399,6 @@ static void set_tsk_as_coop(struct task_struct* tsk, int dom_id)
 }
 /* set_tsk_as_coop */
 
-/* __rem_task_from_timeout_cq:
- * remove a tasks nodes from the timeout coop queue 
- */
-static void __rem_task_from_timeout_cq(coop_queue *cq, struct task_struct *tsk)
-{
-	heap_delete(cq->heap_deadline, 
-		    tsk->cf.coop_t.coop_deadline_heap_node);
-	heap_delete(get_task_bq(tsk)->global_coop_deadline_heap,
-	 	    tsk->cf.coop_t.coop_deadline_global_heap_node);
-
-} /* __rem_task_from_timeout_cq */
-
-static void __rem_task_from_asap_cq(coop_queue *cq, struct task_struct *tsk)
-{
-	heap_delete(cq->heap_asap, 
-		    tsk->cf.coop_t.coop_asap_heap_node);
-} /* __rem_task_from_asap_cq */
-
-static void __rem_task_from_coop_sleep_cq(coop_queue *cq, struct task_struct *tsk)
-{
-	heap_delete(cq->heap_coop_sleep, 
-		    tsk->cf.coop_t.coop_sleep_deadline_node);
-	heap_delete(get_task_bq(tsk)->global_coop_sleep_heap, 
-		    tsk->cf.coop_t.coop_sleep_deadline_global_heap_node);
-} /* __rem_task_from_coop_sleep_cq */
-
 /* remove_task_from_coop_queue: remove task from one or both the coop
  * queues based on the argument flag.  
  * @tsk: The task to remove.  
@@ -445,23 +419,34 @@ void remove_task_from_coop_queue(struct task_struct *tsk,
 	if ((which_queue == 1) || (which_queue == 0))
 	{
 		if (tsk->cf.coop_t.coop_deadline_heap_node) {
-			__rem_task_from_timeout_cq(cq,tsk);
+			heap_delete(cq->heap_deadline, 
+		    tsk->cf.coop_t.coop_deadline_heap_node);
+			heap_delete(get_task_bq(tsk)->global_coop_deadline_heap,
+	 	    tsk->cf.coop_t.coop_deadline_global_heap_node);
+
 			tsk->cf.coop_t.coop_deadline_heap_node = NULL;
+			tsk->cf.coop_t.coop_deadline_global_heap_node = NULL;
 		}
 	}
 	if ((which_queue == 2) || (which_queue == 0))
 	{
 		if (tsk->cf.coop_t.coop_asap_heap_node) {
-			__rem_task_from_asap_cq(cq,tsk);
+			heap_delete(cq->heap_asap, 
+		    tsk->cf.coop_t.coop_asap_heap_node);
+			
 			tsk->cf.coop_t.coop_asap_heap_node = NULL;
 		}
 	}
 	if (which_queue == 3)
 	{
-		if (tsk->cf.coop_t.coop_sleep_deadline_node) 
-		{
-			__rem_task_from_coop_sleep_cq(cq,tsk);
+		if (tsk->cf.coop_t.coop_sleep_deadline_node) {
+			heap_delete(cq->heap_coop_sleep, 
+		    tsk->cf.coop_t.coop_sleep_deadline_node);
+			heap_delete(get_task_bq(tsk)->global_coop_sleep_heap, 
+		    tsk->cf.coop_t.coop_sleep_deadline_global_heap_node);
+
 			tsk->cf.coop_t.coop_sleep_deadline_node = NULL;
+			tsk->cf.coop_t.coop_sleep_deadline_global_heap_node = NULL;
 		} /* if */
 	} /* if */
 	
@@ -469,18 +454,13 @@ void remove_task_from_coop_queue(struct task_struct *tsk,
 }
 /* remove_task_from_coop_queue */
 
-static inline void remove_task_from_coop_bvt_queues(struct task_struct *tsk, 
-						    coop_queue *cq)
-{
-	remove_task_from_coop_queue(tsk, cq,0);
-} /* remove_task_from_coop_bvt_queues */
-
 void test_remove_task_from_coop_bvt_queues(struct task_struct *tsk, 
 					   coop_queue *cq)
 {
 	struct bvtqueue *bq = cpu_bq(task_cpu(tsk));
 
-	remove_task_from_coop_bvt_queues(tsk, cq);
+	/* Remove from both asap and timeout Q*/
+	remove_task_from_coop_queue(tsk,cq,0);
 	bq->bvt_domains[task_domain(tsk)].num_tasks--;
 
 	if(bq->bvt_domains[task_domain(tsk)].num_tasks <= 0) {
@@ -488,12 +468,6 @@ void test_remove_task_from_coop_bvt_queues(struct task_struct *tsk,
 	}
 }
 /* test_remove_task_from_coop_bvt_queues */
-
-void remove_task_from_coop_sleep_queue(struct task_struct *tsk, 
-				       coop_queue *cq)
-{
-	remove_task_from_coop_queue(tsk, cq,COOP_SLEEP_HEAP);
-} /* remove_task_from_coop_sleep_queue */
 
 static inline void find_nearest_deadline(coop_queue *cq, struct task_struct **w_dead)
 {
@@ -736,40 +710,6 @@ void set_normalized_timeval(struct timeval *tv,
 	tv->tv_sec = sec;
 	tv->tv_usec = usec;
 }
-
-/* cooperative_highres_sleeper:
- * arms a high resolution timer to sleep for the 
- * requested interval of time in ktime_t
- * Also releases the corresponding runqueue lock.
- * @cs: The pointer to coop queue
- * @flags: The IRQ flags saved previously.
- * @time: The amount of time to sleep in ktime_t.
- */
-static void __sched cooperative_highres_sleeper(struct bvtqueue *bq, 
-					   unsigned long *flags, 
-					   ktime_t time)
-{
-	struct hrtimer_sleeper t;
-	ktime_t remain;
-
-	hrtimer_init(&t.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	hrtimer_init_sleeper(&t, current);
-	
-	set_current_state(TASK_UNINTERRUPTIBLE);
-	hrtimer_start(&t.timer, time, HRTIMER_MODE_REL);
-	if (!hrtimer_active(&t.timer))
-		t.task = NULL;
-
-	if (likely(t.task))
-		schedule();
-	
-	hrtimer_cancel(&t.timer);
-
-	__set_current_state(TASK_RUNNING);
-		
-	
-}
-/* cooperative_highres_sleeper */
 
 /* sys_coop_poll - The coop_poll system call interface
  * @i_param: input deadline parameters

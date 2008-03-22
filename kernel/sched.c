@@ -2126,6 +2126,12 @@ static void finish_task_switch(struct rq *rq, struct task_struct *prev)
 	 *		Manfred Spraul <manfred@colorfullife.com>
 	 */
 	prev_state = prev->state;
+	#if defined(CONFIG_SCHED_COOPREALTIME)
+	/* Has to be done with Run q lock held, modifying heaps */
+	if (unlikely(prev_state == TASK_DEAD && is_coop_realtime(prev)))
+		remove_task_from_coop_queue(prev,&(rq->bq.cq[prev->cf.dom_id]),3);
+	#endif
+	
 	finish_arch_switch(prev);
 	finish_lock_switch(rq, prev);
 #ifdef CONFIG_SMP

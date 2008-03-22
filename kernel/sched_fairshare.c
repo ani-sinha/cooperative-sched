@@ -419,7 +419,7 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 			}
 			insert_into_coop_heaps(&(bq->cq[dom_id]),p,COOP_TIMEOUT_HEAP);
 			/* and remove from coop sleep queue */
-			remove_task_from_coop_sleep_queue(p, &(bq->cq[dom_id]));
+			remove_task_from_coop_queue(p, &(bq->cq[dom_id]),3);
 		}			
 		/* if there are other coops running, do not borrow and do not
 		 * insert my nodes into the heap 
