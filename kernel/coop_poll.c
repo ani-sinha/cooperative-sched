@@ -887,7 +887,7 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 		set_normalized_timespec(&tv_diff, 
 				       ki_param.t_deadline.tv_sec  - tv_now.tv_sec,
 				       (ki_param.t_deadline.tv_usec - tv_now.tv_usec)*1000);
-		if (bvt_sched_tracing)
+		if (bvt_sched_tracing == 4)
 			printk(KERN_INFO "Task %d going into cooperative sleep\n",current->pid);
 	
 		fs = get_fs();

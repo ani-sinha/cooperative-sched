@@ -1,3 +1,20 @@
 Disable kernel debug - debug irq -- somehow doesn't allow the nvidia driver to work
 Disable group scheduling, smp - faircoop scheduler doesn't support either right now
 Disable cgroup - control mechanism for groups
+
+A comment in the hrtick code says that one cannot program the hrtimer, while holding the runQ lock. So the hrtick code actually goes into
+great lengths to work-around this - it sets a flag and then rescheds, and on resched it programs the hrtimer outside of the runQ lock
+Recent patches onto the mainline, have fixed the locking mess regarding hrtimer cpu base locks and the runQ lock.Therefore is the above comment still valid ? 
+* Our scheduler code regularly programs the hrtimer, with the RunQ lock held. 
+
+	--> The restriction is there because hrtimer_start can be used to start a hrtimer on a remote cpu. This can potentially lead to a deadlock
+	    The hrtimer_start code attempts to lock the cpu_base before proceeding, potentially we can imagine a scenario, where two different processors
+		are trying to do a hrtimer_start on each other's cpu bases's -- leading to a deadlock
+
+	--> Our implementation is not affected by this, since we only arm the hrtimer residing on the local cpu.
+
+To do.
+
+1. Make our scheduler group aware
+2. Make our scheduler cgroups aware
+

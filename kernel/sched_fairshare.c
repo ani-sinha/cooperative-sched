@@ -474,11 +474,12 @@ static void update_virtual_times(struct task_struct *p)
 	cputime_t cputime;
 	cputime64_t tmp;
 	
-	struct cpu_usage_stat *cpustat;
+	//struct cpu_usage_stat *cpustat;
 
 	struct bvtqueue *bq = cpu_bq(smp_processor_id());
 
-	p->cf.bvt_t.bvt_timeslice_end = cpu_bq(task_cpu(p))->ts_now;
+	//p->cf.bvt_t.bvt_timeslice_end = cpu_bq(task_cpu(p))->ts_now;
+	p->cf.bvt_t.bvt_timeslice_end = ns_to_timespec(task_rq(p)->clock);
 	//fairshare_now(&p->cf.bvt_t.bvt_timeslice_end);
         
 	ts_delta                      = timespec_sub(p->cf.bvt_t.bvt_timeslice_end,
@@ -494,13 +495,16 @@ static void update_virtual_times(struct task_struct *p)
 	set_normalized_timespec(&bq->tot_time,bq->tot_time.tv_sec + ts_delta.tv_sec,bq->tot_time.tv_nsec + ts_delta.tv_nsec);
 
 	/* Convert actual time to jiffies using HZ, and override utime value*/
-	//p->utime = jiffies_to_cputime(timespec_to_jiffies(&p->cf.bvt_t.private_sched_param.bvt_actual_time));
-	
-	cputime = jiffies_to_cputime(timespec_to_jiffies(&bq->tot_time));
-	cpustat = &kstat_this_cpu.cpustat;
+	p->utime = timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time);
+	p->utimescaled = cputime_to_scaled(timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time));
+	/* Update cfs stats */
+	p->se.sum_exec_runtime = timespec_to_ns(&p->cf.bvt_t.private_sched_param.bvt_actual_time);
+
+	//cputime = timespec_to_cputime(&bq->tot_time);
+	//cpustat = &kstat_this_cpu.cpustat;
 	/* Convert total time to cputime. */
-	tmp = cputime_to_cputime64(cputime);
-	cpustat->user = tmp;
+	//tmp = cputime_to_cputime64(cputime);
+	//cpustat->user = tmp;
 
 	/* Stats end */
 
@@ -629,11 +633,12 @@ void schedule_dynamic_bvt_timer(struct bvtqueue *bq,
 {
 	struct timespec   ts;
 	struct timespec deadline;
-	
+	struct timespec ts_now;	
+	ts_now = ns_to_timespec(task_rq(p)->clock);
 	ts = bq->curr_bvt_period;
 	/* now() + ts = deadline */
-	set_normalized_timespec(&deadline,ts.tv_sec + bq->ts_now.tv_sec,
-				ts.tv_nsec + bq->ts_now.tv_nsec);
+	set_normalized_timespec(&deadline,ts.tv_sec + ts_now.tv_sec,
+				ts.tv_nsec + ts_now.tv_nsec);
 	p->cf.coop_t.deadline = deadline;
 	
 	if (is_coop_realtime(p)) {
@@ -672,12 +677,13 @@ static void schedule_dynamic_bvt_timer(struct bvtqueue *bq,
  	unsigned long     expire;
  	unsigned long     njiffies;
 	struct timespec   deadline;
-
+	struct timespec ts_now;	
+	ts_now = ns_to_timespec(task_rq(p)->clock);
 	ts = bq->curr_bvt_period;
 	
 	/* now() + ts = deadline */
-	set_normalized_timespec(&deadline,ts.tv_sec + bq->ts_now.tv_sec,
-				ts.tv_nsec + bq->ts_now.tv_nsec);
+	set_normalized_timespec(&deadline,ts.tv_sec + ts_now.tv_sec,
+				ts.tv_nsec + ts_now.tv_nsec);
 	p->cf.coop_t.deadline = deadline;
 
 	if (is_coop_realtime(p)) {
@@ -729,11 +735,14 @@ static inline void charge_running_times(struct bvtqueue *bq,
 /* charge_running_times */
 
 /* Called with runQ lock held */
-inline void tv_fairshare_now_adjusted(struct timeval *tv){
+inline void tv_fairshare_now_adjusted(struct timeval *tv)
+{
 	struct timespec ts_now_adjusted;
+	struct timespec ts_now;
+	ts_now = ns_to_timespec(task_rq(current)->clock);
 	set_normalized_timespec(&ts_now_adjusted, 
-				cpu_bq(smp_processor_id())->ts_now.tv_sec  - wall_to_monotonic.tv_sec, 
-				cpu_bq(smp_processor_id())->ts_now.tv_nsec - wall_to_monotonic.tv_nsec);
+				ts_now.tv_sec  - wall_to_monotonic.tv_sec, 
+				ts_now.tv_nsec - wall_to_monotonic.tv_nsec);
 	
 	tv->tv_sec  = ts_now_adjusted.tv_sec;
 	tv->tv_usec = ts_now_adjusted.tv_nsec / NSEC_PER_USEC;
@@ -931,7 +940,7 @@ static void __sched update_bvt_prev(struct rq *rq, struct task_struct *prev)
 	 * ts_now value used by all our time accounting functions
 	 * Thanks to Buck for suggesting this. 
 	 */
-	fairshare_now(&bq->ts_now);
+	//fairshare_now(&bq->ts_now);
 
 	if(!is_bvt(prev)) 
 		return;
@@ -979,7 +988,7 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 	
 	next = choose_next_bvt(bq);
 	bq->running_bvt_task = next;
-	next->cf.bvt_t.bvt_timeslice_start = bq->ts_now;
+	next->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(rq->clock);
 	calculate_bvt_period(next);
 
 	/* Arm the timer now */
@@ -993,7 +1002,8 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 						bq->curr_bvt_period.tv_sec, bq->curr_bvt_period.tv_nsec);	
 	}
 
-return next;
+	next->se.exec_start = rq->clock;
+	return next;
 
 }
 /* prepare_bvt_context_switch*/

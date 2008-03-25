@@ -333,7 +333,7 @@ int proc_pid_status(struct seq_file *m, struct pid_namespace *ns,
 /*
  * Use precise platform statistics if available:
  */
-#ifdef CONFIG_VIRT_CPU_ACCOUNTING
+#if defined (CONFIG_VIRT_CPU_ACCOUNTING) 
 static cputime_t task_utime(struct task_struct *p)
 {
 	return p->utime;

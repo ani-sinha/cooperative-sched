@@ -38,11 +38,16 @@
 #include <linux/hardirq.h>
 
 #define HEAP_EXPANSION_FACTOR 2
+
+#define FAIRCOOP_HEAP_DEBUG 1
+
 #ifndef MAX
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #endif
 
 //static inline void heap_is_correct(heap_t *heap) __attribute__((always_inline));
+
+#if defined(FAIRCOOP_HEAP_DEBUG)
 
 #define heap_is_correct(heap) do { \
 	gint __i; \
@@ -58,6 +63,12 @@
 			panic("Halting"); \
 		} \
 	} while(0)
+
+#else
+
+void heap_is_correct(heap_t *heap) {}
+
+#endif
 
 #if 0
 void heap_is_correct(heap_t *heap)
@@ -77,12 +88,7 @@ void heap_is_correct(heap_t *heap)
 /* heap_is_correct */
 #endif
 
-//void heap_is_correct(heap_t *heap) {}
-
-/* heap_is_correct */
-
 /* Allocate new heap node */
-
 static inline heap_node *new_heap_node(heap_t *heap, heap_key_t key, heap_data_t data, gint index)
 {
 	/* The heap pointer is really not needed in this version of the code 

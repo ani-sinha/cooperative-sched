@@ -75,6 +75,7 @@
  * This is default implementation.
  * Architectures and sub-architectures can override this.
  */
+
 unsigned long long __attribute__((weak)) sched_clock(void)
 {
 	return (unsigned long long)jiffies * (NSEC_PER_SEC / HZ);
@@ -3612,7 +3613,7 @@ void account_user_time(struct task_struct *p, cputime_t cputime)
 {
 	struct cpu_usage_stat *cpustat = &kstat_this_cpu.cpustat;
 	cputime64_t tmp;
-
+	
 	p->utime = cputime_add(p->utime, cputime);
 
 	/* Add user time to cpustat. */
