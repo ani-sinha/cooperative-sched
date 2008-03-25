@@ -39,8 +39,6 @@
 
 #define HEAP_EXPANSION_FACTOR 2
 
-#define FAIRCOOP_HEAP_DEBUG 1
-
 #ifndef MAX
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 #endif

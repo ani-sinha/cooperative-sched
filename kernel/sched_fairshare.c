@@ -89,7 +89,7 @@ static void check_preempt_faircoop(struct rq* rq, struct task_struct *p);
 static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq);
 static void __sched update_bvt_prev(struct rq *rq, struct task_struct *prev);
 static void set_curr_task_faircoop(struct rq *rq);
-static void task_tick_faircoop(struct rq *rq, struct task_struct *curr);
+static void task_tick_faircoop(struct rq *rq, struct task_struct *p, int queued);
 static void task_new_faircoop(struct rq *rq, struct task_struct *p);
 static void switched_from_faircoop(struct rq *this_rq, struct task_struct *task, int running);
 static void switched_to_faircoop(struct rq *this_rq, struct task_struct *task, int running);
@@ -264,6 +264,7 @@ void insert_task_into_bvt_queue(struct bvtqueue *bq,
 	if(!is_bvt(t)) return;
 
 	fairshare_now(&t->cf.task_sched_param->insertion_ts);
+	//t->cf.task_sched_param->insertion_ts = ns_to_timespec(sched_clock());
 
 	t->cf.task_sched_param->bheap_ptr = 
 			heap_insertt(bq->bvt_heap, 
@@ -478,9 +479,8 @@ static void update_virtual_times(struct task_struct *p)
 
 	struct bvtqueue *bq = cpu_bq(smp_processor_id());
 
-	//p->cf.bvt_t.bvt_timeslice_end = cpu_bq(task_cpu(p))->ts_now;
-	p->cf.bvt_t.bvt_timeslice_end = ns_to_timespec(task_rq(p)->clock);
-	//fairshare_now(&p->cf.bvt_t.bvt_timeslice_end);
+	p->cf.bvt_t.bvt_timeslice_end = cpu_bq(task_cpu(p))->ts_now;
+	//p->cf.bvt_t.bvt_timeslice_end = ns_to_timespec(task_rq(p)->clock);
         
 	ts_delta                      = timespec_sub(p->cf.bvt_t.bvt_timeslice_end,
 						     p->cf.bvt_t.bvt_timeslice_start); 
@@ -633,12 +633,13 @@ void schedule_dynamic_bvt_timer(struct bvtqueue *bq,
 {
 	struct timespec   ts;
 	struct timespec deadline;
-	struct timespec ts_now;	
-	ts_now = ns_to_timespec(task_rq(p)->clock);
+	//struct timespec ts_now;	
+	//ts_now = ns_to_timespec(task_rq(p)->clock);
+	
 	ts = bq->curr_bvt_period;
 	/* now() + ts = deadline */
-	set_normalized_timespec(&deadline,ts.tv_sec + ts_now.tv_sec,
-				ts.tv_nsec + ts_now.tv_nsec);
+	set_normalized_timespec(&deadline,ts.tv_sec + bq->ts_now.tv_sec,
+				ts.tv_nsec + bq->ts_now.tv_nsec);
 	p->cf.coop_t.deadline = deadline;
 	
 	if (is_coop_realtime(p)) {
@@ -677,13 +678,14 @@ static void schedule_dynamic_bvt_timer(struct bvtqueue *bq,
  	unsigned long     expire;
  	unsigned long     njiffies;
 	struct timespec   deadline;
-	struct timespec ts_now;	
-	ts_now = ns_to_timespec(task_rq(p)->clock);
+	//struct timespec ts_now;	
+	//ts_now = ns_to_timespec(task_rq(p)->clock);
+	
 	ts = bq->curr_bvt_period;
 	
 	/* now() + ts = deadline */
-	set_normalized_timespec(&deadline,ts.tv_sec + ts_now.tv_sec,
-				ts.tv_nsec + ts_now.tv_nsec);
+	set_normalized_timespec(&deadline,ts.tv_sec + bq->ts_now.tv_sec,
+				ts.tv_nsec + bq->ts_now.tv_nsec);
 	p->cf.coop_t.deadline = deadline;
 
 	if (is_coop_realtime(p)) {
@@ -738,11 +740,11 @@ static inline void charge_running_times(struct bvtqueue *bq,
 inline void tv_fairshare_now_adjusted(struct timeval *tv)
 {
 	struct timespec ts_now_adjusted;
-	struct timespec ts_now;
-	ts_now = ns_to_timespec(task_rq(current)->clock);
-	set_normalized_timespec(&ts_now_adjusted, 
-				ts_now.tv_sec  - wall_to_monotonic.tv_sec, 
-				ts_now.tv_nsec - wall_to_monotonic.tv_nsec);
+	//struct timespec ts_now;
+	//ts_now = ns_to_timespec(task_rq(current)->clock);
+	set_normalized_timespec(&ts_now_adjusted,
+	       cpu_bq(smp_processor_id())->ts_now.tv_sec  - wall_to_monotonic.tv_sec,
+	       cpu_bq(smp_processor_id())->ts_now.tv_nsec - wall_to_monotonic.tv_nsec);
 	
 	tv->tv_sec  = ts_now_adjusted.tv_sec;
 	tv->tv_usec = ts_now_adjusted.tv_nsec / NSEC_PER_USEC;
@@ -940,7 +942,7 @@ static void __sched update_bvt_prev(struct rq *rq, struct task_struct *prev)
 	 * ts_now value used by all our time accounting functions
 	 * Thanks to Buck for suggesting this. 
 	 */
-	//fairshare_now(&bq->ts_now);
+	fairshare_now(&bq->ts_now);
 
 	if(!is_bvt(prev)) 
 		return;
@@ -1345,13 +1347,14 @@ static void leave_domain_faircoop(struct rq* rq)
 }
 #endif
 
-static void task_tick_faircoop(struct rq *rq, struct task_struct *curr)
+static void task_tick_faircoop(struct rq *rq, struct task_struct *p, int queued)
 {
 }
 
 static void set_curr_task_faircoop(struct rq *rq)
 {
 	fairshare_now(&current->cf.bvt_t.bvt_timeslice_start);
+	//current->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(sched_clock());
 	set_tsk_need_resched(current);
 }
 

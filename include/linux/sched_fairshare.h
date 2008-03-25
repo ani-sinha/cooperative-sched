@@ -101,7 +101,7 @@ struct bvtqueue
 	int isTargetSet;
 	bool fudged_flag;
 	struct timespec ts_slack; /* Slack given to coop tasks before they get policed*/
-	//struct timespec ts_now; /* Our scheduler's view of monotonic time */
+	struct timespec ts_now; /* Our scheduler's view of monotonic time */
 
 	/* Stat Variables */	
 	unsigned long adj;
