@@ -482,8 +482,7 @@ static void update_virtual_times(struct task_struct *p)
 	p->cf.bvt_t.bvt_timeslice_end = cpu_bq(task_cpu(p))->ts_now;
 	//p->cf.bvt_t.bvt_timeslice_end = ns_to_timespec(task_rq(p)->clock);
         
-	ts_delta                      = timespec_sub(p->cf.bvt_t.bvt_timeslice_end,
-						     p->cf.bvt_t.bvt_timeslice_start); 
+	ts_delta = timespec_sub(p->cf.bvt_t.bvt_timeslice_end, p->cf.bvt_t.bvt_timeslice_start); 
 	
 	/* Stats */
 
@@ -495,8 +494,8 @@ static void update_virtual_times(struct task_struct *p)
 	set_normalized_timespec(&bq->tot_time,bq->tot_time.tv_sec + ts_delta.tv_sec,bq->tot_time.tv_nsec + ts_delta.tv_nsec);
 
 	/* Convert actual time to jiffies using HZ, and override utime value*/
-	p->utime = timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time);
-	p->utimescaled = cputime_to_scaled(timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time));
+	//p->utime = timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time);
+	//p->utimescaled = cputime_to_scaled(timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time));
 	/* Update cfs stats */
 	p->se.sum_exec_runtime = timespec_to_ns(&p->cf.bvt_t.private_sched_param.bvt_actual_time);
 
@@ -990,7 +989,8 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 	
 	next = choose_next_bvt(bq);
 	bq->running_bvt_task = next;
-	next->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(rq->clock);
+	//next->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(rq->clock);
+	next->cf.bvt_t.bvt_timeslice_start = bq->ts_now;
 	calculate_bvt_period(next);
 
 	/* Arm the timer now */
@@ -1002,6 +1002,9 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 						next->cf.bvt_t.private_sched_param.bvt_actual_time.tv_sec, 
 						next->cf.bvt_t.private_sched_param.bvt_actual_time.tv_nsec,
 						bq->curr_bvt_period.tv_sec, bq->curr_bvt_period.tv_nsec);	
+	}
+	else if (bvt_sched_tracing == 5) {
+		printk("%lu %lu %lu\n",timespec_to_ns(&bq->ts_now), rq->clock, sched_clock());
 	}
 
 	next->se.exec_start = rq->clock;
