@@ -474,7 +474,7 @@ static void update_virtual_times(struct task_struct *p)
 	suseconds_t nsec;
 	cputime_t cputime;
 	cputime64_t tmp;
-	
+	unsigned long delta_exec;	
 	//struct cpu_usage_stat *cpustat;
 
 	struct bvtqueue *bq = cpu_bq(smp_processor_id());
@@ -496,8 +496,10 @@ static void update_virtual_times(struct task_struct *p)
 	/* Convert actual time to jiffies using HZ, and override utime value*/
 	//p->utime = timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time);
 	//p->utimescaled = cputime_to_scaled(timespec_to_cputime(&p->cf.bvt_t.private_sched_param.bvt_actual_time));
+
 	/* Update cfs stats */
-	p->se.sum_exec_runtime = timespec_to_ns(&p->cf.bvt_t.private_sched_param.bvt_actual_time);
+	delta_exec = (unsigned long)(task_rq(p)->clock - p->se.exec_start);
+	p->se.sum_exec_runtime += delta_exec;
 
 	//cputime = timespec_to_cputime(&bq->tot_time);
 	//cpustat = &kstat_this_cpu.cpustat;
@@ -1004,9 +1006,10 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 						bq->curr_bvt_period.tv_sec, bq->curr_bvt_period.tv_nsec);	
 	}
 	else if (bvt_sched_tracing == 5) {
-		printk("%lu %lu %lu\n",timespec_to_ns(&bq->ts_now), rq->clock, sched_clock());
+		printk("%llu %llu %llu\n",timespec_to_ns(&bq->ts_now), rq->clock, sched_clock());
 	}
-
+	
+	/* Update exec_start, to enable cfs process accounting */
 	next->se.exec_start = rq->clock;
 	return next;
 
@@ -1357,6 +1360,7 @@ static void task_tick_faircoop(struct rq *rq, struct task_struct *p, int queued)
 static void set_curr_task_faircoop(struct rq *rq)
 {
 	fairshare_now(&current->cf.bvt_t.bvt_timeslice_start);
+	current->se.exec_start = rq->clock;
 	//current->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(sched_clock());
 	set_tsk_need_resched(current);
 }
