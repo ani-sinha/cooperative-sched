@@ -17,4 +17,8 @@ To do.
 
 1. Make our scheduler group aware
 2. Make our scheduler cgroups aware
+3. Remove the uneccesary constraint
+	-- A task gets policed if it sleeps in select() or epoll()
+	-- Allow a task to sleep without getting policed.
+4. SMPify the scheduler
 
