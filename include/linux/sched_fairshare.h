@@ -96,7 +96,6 @@ struct bvtqueue
 	 * calculate the coop period
 	 */
 	struct timeval last_coop_deadline;
-	struct timeval upcoming_deadline;
 	struct timespec max_virtual_time;
 	int isTargetSet;
 	bool fudged_flag;

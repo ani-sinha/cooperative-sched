@@ -587,32 +587,27 @@ int find_coop_period(struct task_struct *next,
 		     struct timespec    *coop_prd)
 {
 	struct timeval tv_now;
-	int period_set = 0;
+	struct task_struct *next_earliest_deadline_task = NULL;
 	struct bvtqueue *bq = cpu_bq(smp_processor_id());
 
-	if(bq->isTargetSet == 1) {
-		/* target_virtual_time contains the upcoming deadline time wall time, timeval format*/
-		/* Convert current time to wall time, timeval first */
-		
+	find_nearest_global_deadline(&next_earliest_deadline_task);
+	
+    if(next_earliest_deadline_task) {
 		tv_fairshare_now_adjusted(&tv_now);
-		set_normalized_timespec(coop_prd,
-				        bq->upcoming_deadline.tv_sec - tv_now.tv_sec,
-		 	 	        (bq->upcoming_deadline.tv_usec - tv_now.tv_usec)*NSEC_PER_USEC);
-		
-		/* Divide coop_prd by the number of runnable tasks on the bvt Q, give each of them a chance to run before the deadline */
-		
-		/* nsec = timespec_to_ns(coop_prd);
-		if (bq->bvt_heap->size)
-			nsec = nsec / (bq->bvt_heap->size);
+	    
+		if ( (timeval_compare(&(next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline),&(tv_now)) <0)) {
+	       set_normalized_timespec(coop_prd, 0,0);
+	    }
+	    else {
+			set_normalized_timespec(coop_prd,
+				        next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline.tv_sec - tv_now.tv_sec,
+		 	 	        (next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline.tv_usec - tv_now.tv_usec)*NSEC_PER_USEC);
+			
+        }
+	return 1;
+	}
+	else return 0;
 
-		*coop_prd = ns_to_timespec(nsec);*/
-
-		period_set = 1;
-		}
-	else period_set = 0;
-
-
-	return period_set;
 }
 /* find_coop_period */
 
