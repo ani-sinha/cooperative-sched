@@ -412,13 +412,14 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 		int dom_id = task_domain(p);
 
 		/* reinsert the coop nodes into the coop heap */
-		if (timeval_compare(&(p->cf.coop_t.dead_p.t_deadline), &tv_zero) > 0) {
+		if (timeval_compare(&(p->cf.coop_t.dead_p.t_deadline), 
+		&tv_zero) > 0) {
 			/* insert into timeout heap */
 			if (bq == NULL) {
 				printk(KERN_ERR "bq is null\n");
 				return;
 			}
-			insert_into_coop_heaps(&(bq->cq[dom_id]),p,COOP_TIMEOUT_HEAP);
+			insert_task_into_timeout_queue(NULL,&(bq->cq[dom_id]),p,0);
 			/* and remove from coop sleep queue */
 			remove_task_from_coop_queue(p, &(bq->cq[dom_id]),3);
 		}			
@@ -429,7 +430,9 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 			printk(KERN_ERR "bvt_dom is null\n");
 			return;
 		}
-		if (p->cf.bvt_dom->num_tasks >1) return;
+		if (task_domain(p) != DOM_REALTIME_TEMP && 
+			(p->cf.bvt_dom->num_tasks >1)) 
+			return;
 	} /* if */
 	
 	if (likely(!heap_is_empty(bq->bvt_heap))) {
@@ -509,7 +512,7 @@ static void update_virtual_times(struct task_struct *p)
 
 	/* Stats end */
 
-	if (is_coop_realtime(p)) 
+	if (is_coop_realtime(p) && task_domain(p) != DOM_REALTIME_TEMP) 
 		nr_realcoop = bq->bvt_domains[task_domain(p)].num_tasks;
 
 	/* note: nr_realcoop will be 0 only when a single real-coop
@@ -940,6 +943,8 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 	}
 	
 	next = choose_next_bvt(bq);
+	if (next == NULL)
+		return NULL;
 	bq->running_bvt_task = next;
     /* BUG FIX: Remove this guy's entry from the timeout heap, since he is about to run*/
 	remove_task_from_coop_queue(next,&(rq->bq.cq[next->cf.dom_id]),0);
@@ -972,10 +977,10 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 void inline remove_task_from_bvt_queue(struct bvtqueue *bq, 
 				       struct task_struct *p)
 {
-	if (p->cf.task_sched_param->bheap_ptr) 
+	if (p->cf.task_sched_param->bheap_ptr) {
 		heap_delete(bq->bvt_heap,p->cf.task_sched_param->bheap_ptr);
-	p->cf.task_sched_param->bheap_ptr = NULL;
-
+		p->cf.task_sched_param->bheap_ptr = NULL;
+	}
 }
 /* remove_task_from_bvt_queue*/
 
@@ -1031,7 +1036,10 @@ void do_policing(struct bvtqueue *bq, struct task_struct *tsk)
 	 */
 	tsk->cf.bvt_t.private_sched_param.bvt_virtual_time = tsk->cf.task_sched_param->bvt_virtual_time;
 	tsk->cf.task_sched_param = &tsk->cf.bvt_t.private_sched_param;
-
+	#if defined(CONFIG_SMP)
+	/* Unpin the task*/
+	set_cpus_allowed(tsk,cpu_online_map);
+	#endif
 	clear_coop_task(tsk);
 
 } /* do_policing */
@@ -1262,9 +1270,7 @@ static void dequeue_task_faircoop(struct rq *rq, struct task_struct *p,int sleep
                 do_policing(bq,p);
             }
             else {
-                insert_into_coop_heaps(&(bq->cq[dom_id]),
-                               p,
-                               COOP_SLEEP_HEAP);
+				insert_task_into_sleep_queue(NULL,&(bq->cq[dom_id]),p,0);
             } /* else */
         } /* !p->exit_state */
     } else  {

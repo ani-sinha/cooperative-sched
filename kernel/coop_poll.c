@@ -100,6 +100,7 @@ static inline void cq_unlock(struct bvtqueue *bq,
 		print_debug(COOP_DEBUG,fmt,##arg);   \
 	}while(0);
 
+#if 0
 inline int is_coop_realtime(struct task_struct* p) {
 
 	if (!p->cf.bvt_dom) return 0;
@@ -107,6 +108,7 @@ inline int is_coop_realtime(struct task_struct* p) {
 	return ((p->cf.dom_id >= DOM_REALTIME_COOP0) && 
 		(p->cf.dom_id <= DOM_REALTIME_COOP14));
 }
+#endif
 
 static int show_coopstat(struct seq_file *seq, void *v)
 {
@@ -224,10 +226,10 @@ static long __insert_into_timeout_heap(coop_queue *cq,struct task_struct *p)
 	
 } /*  __insert_into_timeout_heap */
 
-static long __insert_into_coop_sleep_heap(coop_queue *cq,struct task_struct *p) 
+static long __insert_into_sleep_heap(coop_queue *cq,struct task_struct *p) 
 {
 	p->cf.coop_t.coop_sleep_deadline_node = heap_insertt(cq->heap_coop_sleep, p, p);
-	/* Insert onto the global deadline heap */
+	/* Insert onto the global sleep heap */
 	p->cf.coop_t.coop_sleep_deadline_global_heap_node = heap_insertt((get_task_bq(p)->global_coop_sleep_heap),p,p);
 	
 	if(unlikely ( (!p->cf.coop_t.coop_sleep_deadline_node) || (!p->cf.coop_t.coop_sleep_deadline_global_heap_node)  ))  {
@@ -238,37 +240,6 @@ static long __insert_into_coop_sleep_heap(coop_queue *cq,struct task_struct *p)
 	} else return 0;
 	
 } /* __insert_into_coop_sleep_heap */
-
-/* insert_into_coop_heaps: 
- * insert task into different coop heaps depending upon the argument which_heap.
- * @which_heap: The heap to insert into.
- * 0=> both timeout and asap queues,
- * 1=> timeout queue, 
- * 2=> asap queue, 
- * 3=> coop sleep queue,
- * -1=> do nothing.
- */
-long insert_into_coop_heaps(coop_queue *cq,struct task_struct *p, int which_heap) 
-{
-	long ret = 0;
-	switch (which_heap) {
-	case 0:
-		ret =  __insert_into_timeout_heap(cq,p);
-		ret |= __insert_into_asap_heap(cq,p);
-		break;
-	case 1:
-		ret = __insert_into_timeout_heap(cq,p);
-		break;
-	case 2:
-		ret = __insert_into_asap_heap(cq,p);
-		break;
-	case 3:
-		ret = __insert_into_coop_sleep_heap(cq,p);
-		break;
-	} /* switch */
-	return ret;
-
-} /* insert_into_coop_heaps */
 
 /* insert_task_into_asap_queue - insert any task into 
  * specified cpu coop asap queue.
@@ -300,18 +271,35 @@ static long insert_task_into_asap_queue(struct timeval *t_asap_deadline,
  * @p: the pointer to the task struct of any process
  * This function must be called with coop_queue lock held
  */
-static long insert_task_into_timeout_queue(struct timeval *t_deadline, 
-				    coop_queue *cq, struct task_struct *p)
+long insert_task_into_timeout_queue(struct timeval *t_deadline, 
+				    coop_queue *cq, struct task_struct *p,int fil_dead)
 {
 	struct timespec rank;
 
 	g_assert(p);
-	g_assert(t_deadline);
 
-	getnstimeofday(&rank);
-	set_tsk_deadline_info(p, t_deadline,rank);
-
+	if(fil_dead) {
+		g_assert(t_deadline);
+		getnstimeofday(&rank);
+		set_tsk_deadline_info(p, t_deadline,rank);
+	}
 	return __insert_into_timeout_heap(cq,p);
+}
+/* insert_task_into_timeout_queue*/
+
+long insert_task_into_sleep_queue(struct timeval *t_deadline, 
+				    coop_queue *cq, struct task_struct *p,int fil_dead)
+{
+	struct timespec rank;
+
+	g_assert(p);
+
+	if(fil_dead) {
+		g_assert(t_deadline);
+		getnstimeofday(&rank);
+		set_tsk_deadline_info(p, t_deadline,rank);
+	}
+	return __insert_into_sleep_heap(cq,p);
 }
 /* insert_task_into_timeout_queue*/
 
@@ -399,6 +387,42 @@ static void set_tsk_as_coop(struct task_struct* tsk, int dom_id)
 }
 /* set_tsk_as_coop */
 
+void set_tsk_as_temp_coop(struct task_struct* tsk)
+{
+	struct bvtqueue *bq;
+	
+	/* multiple calls to this function should not mess with our
+	 * accounting logic
+	 */
+
+	if (is_coop_realtime(tsk)) {
+		return;
+	}
+
+#if defined(CONFIG_SMP)
+	cpumask_t mask;
+	cpu_set(task_cpu(tsk), mask);
+
+	/* cpu migration for coop tasks is not allowed */
+	sched_setaffinity(tsk->pid,mask);
+#endif
+	bq = cpu_bq(task_cpu(tsk));
+
+	set_coop_task(tsk);
+
+    /* Now set the task's domain as the real time domain */
+	tsk->cf.bvt_dom = &(bq->bvt_domains[DOM_REALTIME_TEMP]);
+	tsk->cf.dom_id  = DOM_REALTIME_TEMP;
+        
+	/* increment the number of tasks in the real time domain if
+	 * the task is runnnable.
+	 */
+	if (!tsk->state) {
+		bq->bvt_domains[DOM_BEST_EFFORT].num_tasks--;
+		bq->bvt_domains[DOM_REALTIME_TEMP].num_tasks++;
+	} /* if */
+}
+
 /* remove_task_from_coop_queue: remove task from one or both the coop
  * queues based on the argument flag.  
  * @tsk: The task to remove.  
@@ -462,10 +486,10 @@ void test_remove_task_from_coop_bvt_queues(struct task_struct *tsk,
 	/* Remove from both asap and timeout Q*/
 	remove_task_from_coop_queue(tsk,cq,0);
 	bq->bvt_domains[task_domain(tsk)].num_tasks--;
-
-	if(bq->bvt_domains[task_domain(tsk)].num_tasks <= 0) {
+	if(task_domain(tsk) == DOM_REALTIME_TEMP)
+		remove_task_from_bvt_queue(bq,tsk);
+	else if(bq->bvt_domains[task_domain(tsk)].num_tasks <= 0) 
 		remove_task_from_bvt_queue(bq, tsk);
-	}
 }
 /* test_remove_task_from_coop_bvt_queues */
 
@@ -847,8 +871,7 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 		}
 
 		ret = insert_task_into_timeout_queue(&ki_param.t_deadline, 
-						     cq, 
-						     current);
+						     				cq, current,1);
 		if (unlikely(ret < 0)){
 			remove_task_from_coop_queue(current, cq,0);
 			cq_unlock(bq, &flags);
@@ -885,13 +908,9 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 		if (bvt_sched_tracing == 4)
 			printk(KERN_INFO "Task %d going into cooperative sleep\n",current->pid);
 	
-		fs = get_fs();
-		set_fs(get_ds());
 		cq_unlock(bq,&flags);
 		/* TODO Take care of the call being interrupted by a signal */
-		sys_nanosleep(&tv_diff,NULL);
-		set_fs(fs);
-		//cooperative_highres_sleeper(bq, &flags, timeval_to_ktime(tv_diff));
+		hrtimer_nanosleep(&tv_diff,NULL,HRTIMER_MODE_REL,CLOCK_MONOTONIC);
 		goto wakeup;
 	}
 
