@@ -362,7 +362,6 @@ void heap_delete(heap_t *heap, heap_node *node)
 	heap_key_t   key;
 	
 	g_assert(node);
-
 	g_assert(heap);
 
 	heap_is_correct(heap);

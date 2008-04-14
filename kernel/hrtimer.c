@@ -1448,11 +1448,15 @@ sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 	/* Give up the lock*/	
 	put_task_bq_locked(bq,&flags);
 	ret = hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
-	do_gettimeofday(&tv_now);
 	current->cf.coop_t.is_well_behaved = 0;
 	/* Revoke its cooprealtime status*/
-	if(!was_cooprealtime)
+	if(!was_cooprealtime) {
+		bq = get_task_bq_locked(current,&flags);
 		do_policing(bq,current);
+		bq->bvt_domains[DOM_REALTIME_TEMP].num_tasks--;
+		bq->bvt_domains[DOM_BEST_EFFORT].num_tasks++;
+		put_task_bq_locked(bq,&flags);
+	}		
 
 	return ret;
 	#else

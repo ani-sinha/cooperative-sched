@@ -203,6 +203,9 @@ static long __insert_into_asap_heap(coop_queue *cq,struct task_struct *p)
 {
 	p->cf.coop_t.coop_asap_heap_node = heap_insertt(cq->heap_asap, p, p);
 
+	if(task_domain(p) == DOM_BEST_EFFORT)
+		printk(KERN_ERR "Tsk %d, incorrectly inserting into asap_heap_node , cooprealtime flag = %d\n",p->pid,is_coop_realtime(p));
+
 	if(unlikely (!p->cf.coop_t.coop_asap_heap_node)) {
 		coop_print_debug("%s, %s:%d: Unable to allocate new memory for the new asap heap node!",
 			__FILE__, __FUNC__, __LINE__);
@@ -215,6 +218,9 @@ static long __insert_into_timeout_heap(coop_queue *cq,struct task_struct *p)
 {
 	
 	p->cf.coop_t.coop_deadline_heap_node = heap_insertt(cq->heap_deadline, p, p);
+	if(task_domain(p) == DOM_BEST_EFFORT || !is_coop_realtime(p))
+		printk(KERN_ERR "Tsk %d, incorrectly inserting into deadline_heap_node , cooprealtime flag = %d\n",p->pid,is_coop_realtime(p));
+
 	/* Insert onto the global deadline heap */
 	p->cf.coop_t.coop_deadline_global_heap_node = heap_insertt((get_task_bq(p)->global_coop_deadline_heap),p,p);
 
@@ -275,6 +281,8 @@ long insert_task_into_timeout_queue(struct timeval *t_deadline,
 				    coop_queue *cq, struct task_struct *p,int fil_dead)
 {
 	struct timespec rank;
+
+	printk("Task %d cr flag %d dom %d timeout q insertion\n",p->pid,is_coop_realtime(p),task_domain(p));
 
 	g_assert(p);
 
@@ -436,11 +444,16 @@ void remove_task_from_coop_queue(struct task_struct *tsk,
 				 coop_queue *cq, 
 				 int which_queue)
 {
+	
 	if (which_queue <0) return;
 	
 	if ((which_queue == 1) || (which_queue == 0))
 	{
 		if (tsk->cf.coop_t.coop_deadline_heap_node) {
+			printk("Heap del del %d, %d %d\n",tsk->pid,
+			is_coop_realtime(tsk),
+			task_domain(tsk));
+
 			heap_delete(cq->heap_deadline, 
 		    tsk->cf.coop_t.coop_deadline_heap_node);
 			heap_delete(get_task_bq(tsk)->global_coop_deadline_heap,
@@ -453,15 +466,20 @@ void remove_task_from_coop_queue(struct task_struct *tsk,
 	if ((which_queue == 2) || (which_queue == 0))
 	{
 		if (tsk->cf.coop_t.coop_asap_heap_node) {
+			printk("Heap del asap %d, %d %d\n",tsk->pid,
+			is_coop_realtime(tsk),
+			task_domain(tsk));
 			heap_delete(cq->heap_asap, 
 		    tsk->cf.coop_t.coop_asap_heap_node);
-			
 			tsk->cf.coop_t.coop_asap_heap_node = NULL;
 		}
 	}
 	if (which_queue == 3)
 	{
 		if (tsk->cf.coop_t.coop_sleep_deadline_node) {
+			printk("Heap del sleep %d, %d %d\n",tsk->pid,
+			is_coop_realtime(tsk),
+			task_domain(tsk));
 			heap_delete(cq->heap_coop_sleep, 
 		    tsk->cf.coop_t.coop_sleep_deadline_node);
 			heap_delete(get_task_bq(tsk)->global_coop_sleep_heap, 
@@ -1096,8 +1114,10 @@ void __init coop_init(void)
 
 void coop_proc_init(struct task_struct *p)
 {
-	p->cf.bvt_dom                       = NULL;
+	p->cf.bvt_dom = NULL;
 	memset (&p->cf.coop_t, 0, sizeof(struct coop_struct));
+	p->cf.coop_t.coop_deadline_heap_node = NULL;
+	printk("Nullyfying coop deadline heap node for %d\n",p->pid);
 }
 /*coop_proc_init */
 

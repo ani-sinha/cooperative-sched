@@ -310,7 +310,7 @@ static void find_fairshare_period(suseconds_t *fair_share_period,
 	if (nr_tasks) {
 		*fair_share_period = bvt_sched_granularity / nr_tasks;
 	}else {
-		printk (KERN_ERR "undefined fair share period: impossible, nrtasks = %d\n",nr_tasks);
+		printk (KERN_ERR "undefined fair share period: impossible, nrtasks = %d %d %d\n",nr_tasks,nr_besteffort,nr_realcoop);
 		BUG();
 	}
 	if (is_coop_realtime(next)) {
@@ -405,8 +405,7 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 
 	p->cf.bvt_dom->num_tasks++;
 
-       /* handle real coop wakeups seperately here */
-
+    /* handle real coop wakeups seperately here */
 	if (is_coop_realtime(p)) {
 
 		int dom_id = task_domain(p);
@@ -572,7 +571,6 @@ static enum hrtimer_restart handle_bvt_timeout(struct hrtimer *timer)
 		bq->bvt_domains[DOM_BEST_EFFORT].num_tasks++;
 		/* insert task back into heap */
 		insert_task_into_bvt_queue(bq,p); 
-
 		put_task_bq_locked(bq, &flags);
 
 	} /* if */
@@ -948,7 +946,8 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 		return NULL;
 	bq->running_bvt_task = next;
     /* BUG FIX: Remove this guy's entry from the timeout heap, since he is about to run*/
-	remove_task_from_coop_queue(next,&(rq->bq.cq[next->cf.dom_id]),0);
+	remove_task_from_coop_queue(next,
+ 							&(bq->cq[task_domain(next)]),0);
 
 	//next->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(rq->clock);
 	next->cf.bvt_t.bvt_timeslice_start = bq->ts_now;

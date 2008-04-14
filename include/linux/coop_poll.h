@@ -129,7 +129,7 @@ typedef struct _coop_queue coop_queue;
 
 struct coop_struct 
 {
-        /* These are backpointers to its corresponding 
+     /* These are backpointers to its corresponding 
 	 * heap nodes of the ASAP and deadline heaps to 
 	 * which this process was a member.
 	 */
