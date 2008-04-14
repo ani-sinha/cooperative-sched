@@ -1418,7 +1418,6 @@ sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 	int was_cooprealtime;
 	unsigned long flags;
 	long ret;
-	struct timeval lat;
 	#endif
 
 	if (copy_from_user(&tu, rqtp, sizeof(tu)))
@@ -1450,8 +1449,6 @@ sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 	put_task_bq_locked(bq,&flags);
 	ret = hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
 	do_gettimeofday(&tv_now);
-	set_normalized_timeval(&lat,tv_now.tv_sec - deadline.tv_sec, tv_now.tv_usec - deadline.tv_usec);
-	printk("Pid = %d %u.%u\n",current->pid,lat.tv_sec,lat.tv_usec);
 	current->cf.coop_t.is_well_behaved = 0;
 	/* Revoke its cooprealtime status*/
 	if(!was_cooprealtime)

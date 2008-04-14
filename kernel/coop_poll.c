@@ -617,7 +617,6 @@ int find_coop_period(struct task_struct *next,
 	find_nearest_global_deadline_overall(&next_earliest_deadline_task);
 	
     if(next_earliest_deadline_task) {
-		printk("Negd = %d\n",next_earliest_deadline_task->pid);
 		tv_fairshare_now_adjusted(&tv_now);
 	    
 		if ( (timeval_compare(&(next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline),&(tv_now)) <0)) {
