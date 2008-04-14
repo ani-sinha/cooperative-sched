@@ -195,4 +195,5 @@ long insert_task_into_timeout_queue(struct timeval*,coop_queue*,
 									struct task_struct*,int);
 long insert_task_into_sleep_queue(struct timeval*,coop_queue*,
 									struct task_struct*,int);
+void set_tsk_as_temp_coop(struct task_struct*);
 #endif /* _LINUX_COOP_POLL_H */

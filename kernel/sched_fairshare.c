@@ -806,6 +806,7 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
 	find_nearest_global_deadline(&next_earliest_deadline_task);
 	set_normalized_timespec(&ts_fudge,0,bvt_sched_granularity*NSEC_PER_USEC);
 
+		    
 	/* Returns the wall time */
 	tv_fairshare_now_adjusted(&tv_now);
 
@@ -815,6 +816,7 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
 	
 	if (next_earliest_deadline_task)
 	{
+	printk("NedT=%d\n",next_earliest_deadline_task->pid);
 	/* Check if this deadline is expired or not */
 	if(timeval_compare(&(next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline), 
 			   &tv_now) < 0) 

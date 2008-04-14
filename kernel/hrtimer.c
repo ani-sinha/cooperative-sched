@@ -43,8 +43,12 @@
 #include <linux/tick.h>
 #include <linux/seq_file.h>
 #include <linux/err.h>
-
 #include <asm/uaccess.h>
+
+#if defined(CONFIG_SCHED_COOPREALTIME)
+#include<linux/coop_poll.h>
+#include<linux/sched_fairshare.h>
+#endif
 
 /**
  * ktime_get - get the monotonic time in ktime_t format
@@ -1406,14 +1410,59 @@ asmlinkage long
 sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 {
 	struct timespec tu;
+	#if defined(CONFIG_SCHED_COOPREALTIME)
+	struct timeval deadline;
+	struct timeval tv_now;
+	struct bvtqueue *bq;
+	coop_queue *cq;
+	int was_cooprealtime;
+	unsigned long flags;
+	long ret;
+	struct timeval lat;
+	#endif
 
 	if (copy_from_user(&tu, rqtp, sizeof(tu)))
 		return -EFAULT;
 
 	if (!timespec_valid(&tu))
 		return -EINVAL;
+	
+	#if defined(CONFIG_SCHED_COOPREALTIME)
+	do_gettimeofday(&tv_now);
+	set_normalized_timeval(&deadline, tu.tv_sec + tv_now.tv_sec, ((tu.tv_nsec + tv_now.tv_usec*NSEC_PER_USEC)/NSEC_PER_USEC));
+	
+	was_cooprealtime = is_coop_realtime(current);
+	if (!was_cooprealtime)  
+		set_tsk_as_temp_coop(current);	
+	
+	bq = get_task_bq_locked(current,&flags);
+	cq = &(bq->cq[DOM_REALTIME_TEMP]);
+	
+	ret = insert_task_into_timeout_queue(&deadline,cq,current,1);
+	if (unlikely(ret < 0)){
+		remove_task_from_coop_queue(current, cq,0);
+		put_task_bq_locked(bq, &flags);
+		return ret;
+	}
+	
+	current->cf.coop_t.is_well_behaved = 1;
+	/* Give up the lock*/	
+	put_task_bq_locked(bq,&flags);
+	ret = hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
+	do_gettimeofday(&tv_now);
+	set_normalized_timeval(&lat,tv_now.tv_sec - deadline.tv_sec, tv_now.tv_usec - deadline.tv_usec);
+	printk("Pid = %d %u.%u\n",current->pid,lat.tv_sec,lat.tv_usec);
+	current->cf.coop_t.is_well_behaved = 0;
+	/* Revoke its cooprealtime status*/
+	if(!was_cooprealtime)
+		do_policing(bq,current);
 
-	return hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
+	return ret;
+	#else
+	return  hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
+
+
+	#endif
 }
 
 /*

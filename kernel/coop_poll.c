@@ -402,12 +402,10 @@ void set_tsk_as_temp_coop(struct task_struct* tsk)
 #if defined(CONFIG_SMP)
 	cpumask_t mask;
 	cpu_set(task_cpu(tsk), mask);
-
 	/* cpu migration for coop tasks is not allowed */
 	sched_setaffinity(tsk->pid,mask);
 #endif
 	bq = cpu_bq(task_cpu(tsk));
-
 	set_coop_task(tsk);
 
     /* Now set the task's domain as the real time domain */
@@ -532,8 +530,8 @@ void find_nearest_global_sleep(struct task_struct **overall)
   * Null if heap is empty */
 void find_nearest_global_deadline_overall(struct task_struct **overall)
 {
-	struct task_struct *temp1;
-	struct task_struct *temp2;
+	struct task_struct *temp1 = NULL;
+	struct task_struct *temp2 = NULL;
 
 	find_nearest_global_deadline(&temp1);
 	find_nearest_global_sleep(&temp2);
@@ -613,10 +611,13 @@ int find_coop_period(struct task_struct *next,
 	struct timeval tv_now;
 	struct task_struct *next_earliest_deadline_task = NULL;
 	struct bvtqueue *bq = cpu_bq(smp_processor_id());
-
-	find_nearest_global_deadline(&next_earliest_deadline_task);
+	
+	/* Find the nearest global deadline, considering both
+	 * runnable and sleeping tasks */
+	find_nearest_global_deadline_overall(&next_earliest_deadline_task);
 	
     if(next_earliest_deadline_task) {
+		printk("Negd = %d\n",next_earliest_deadline_task->pid);
 		tv_fairshare_now_adjusted(&tv_now);
 	    
 		if ( (timeval_compare(&(next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline),&(tv_now)) <0)) {
@@ -845,10 +846,13 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 
 	do_gettimeofday(&tv_now);
 
+	/* Not needed, since a runnning task doesn't have its info in the queues*/
+	#if 0
 	/* remove my stale nodes from the coop heaps and re-insert new
 	 * nodes based on my updated information
 	 */
 	remove_task_from_coop_queue(current, cq,0);
+	#endif
 
 	/* Insert my info into the heap */
 	
