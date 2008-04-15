@@ -942,13 +942,16 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 	}
 	
 	next = choose_next_bvt(bq);
-	if (next == NULL)
+	if (NULL == next)
 		return NULL;
+
 	bq->running_bvt_task = next;
     /* BUG FIX: Remove this guy's entry from the timeout heap, since he is about to run*/
-	remove_task_from_coop_queue(next,
- 							&(bq->cq[task_domain(next)]),0);
-
+	if(is_coop_realtime(next)) {
+		printk("del %d dom %d\n",next->pid,task_domain(next));
+		remove_task_from_coop_queue(next,
+ 								&(bq->cq[task_domain(next)]),0);
+	}
 	//next->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(rq->clock);
 	next->cf.bvt_t.bvt_timeslice_start = bq->ts_now;
 	calculate_bvt_period(next);
@@ -1103,8 +1106,7 @@ void __init bvt_global_init()
 		bq->global_coop_deadline_heap = temp2;
 		bq->global_coop_sleep_heap = temp3;
 
-		if (unlikely(!bq->bvt_heap) || 
-		unlikely(!bq->global_coop_deadline_heap)) {
+		if (unlikely(!temp1 || !temp2 || !temp3)) {  
 			/* memory allocation error */
 			bvt_print_debug("unable to allocate memory for the bvt heap.");
 			panic("unable to allocate memory for the bvt heap");

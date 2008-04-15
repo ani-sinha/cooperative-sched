@@ -1410,7 +1410,7 @@ asmlinkage long
 sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 {
 	struct timespec tu;
-	#if defined(CONFIG_SCHED_COOPREALTIME)
+	#if defined(XONFIG_SCHED_COOPREALTIME)
 	struct timeval deadline;
 	struct timeval tv_now;
 	struct bvtqueue *bq;
@@ -1425,14 +1425,17 @@ sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 
 	if (!timespec_valid(&tu))
 		return -EINVAL;
-	
-	#if defined(CONFIG_SCHED_COOPREALTIME)
+		
+	#if defined(XONFIG_SCHED_COOPREALTIME)
+	/* Coop real time tasks do aren't allowed the special sys_nanosleep.
+	 * They can use the sys_coop_poll call itself for doing a nanosleep */
+	if (is_coop_realtime(current))
+		return  hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
+
 	do_gettimeofday(&tv_now);
 	set_normalized_timeval(&deadline, tu.tv_sec + tv_now.tv_sec, ((tu.tv_nsec + tv_now.tv_usec*NSEC_PER_USEC)/NSEC_PER_USEC));
 	
-	was_cooprealtime = is_coop_realtime(current);
-	if (!was_cooprealtime)  
-		set_tsk_as_temp_coop(current);	
+	set_tsk_as_temp_coop(current);	
 	
 	bq = get_task_bq_locked(current,&flags);
 	cq = &(bq->cq[DOM_REALTIME_TEMP]);
@@ -1449,8 +1452,8 @@ sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 	put_task_bq_locked(bq,&flags);
 	ret = hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
 	current->cf.coop_t.is_well_behaved = 0;
-	/* Revoke its cooprealtime status*/
-	if(!was_cooprealtime) {
+	/* If the timeslice timer didn't ding it, then demote this task to the best effort domain*/
+	if(is_coop_realtime(current)) {
 		bq = get_task_bq_locked(current,&flags);
 		do_policing(bq,current);
 		bq->bvt_domains[DOM_REALTIME_TEMP].num_tasks--;

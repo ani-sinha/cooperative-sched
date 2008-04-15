@@ -38,6 +38,7 @@
 #include <linux/hardirq.h>
 
 #define HEAP_EXPANSION_FACTOR 2
+#define FAIRCOOP_HEAP_DEBUG 1
 
 #ifndef MAX
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
@@ -57,8 +58,7 @@
 	for(__i=1;__i<=heap->size;__i++) \
 		if(!(heap->nodes[__i]->key)) { \
 			printk(KERN_ERR "Heap got fucked at %s line %d, index with null entry = %d,heap size = %d\n",__func__,__LINE__, __i,heap->size); \
-			dump_stack(); \
-			panic("Halting"); \
+			BUG(); \
 		} \
 	} while(0)
 
@@ -365,7 +365,12 @@ void heap_delete(heap_t *heap, heap_node *node)
 	g_assert(heap);
 
 	heap_is_correct(heap);
-	
+
+	if (node->index > heap->size || node->index < 1) {
+		printk(KERN_ERR "Incorrect index for heap node %d %d\n",heap->size,node->index);
+		BUG();
+	}
+
 	/* Replace the deleted value with whatever was last */
 	replacement = heap->nodes[heap->size];
 	key         = replacement->key;
