@@ -1,3 +1,5 @@
+** Hrtimer issues **
+
 Disable kernel debug - debug irq -- somehow doesn't allow the nvidia driver to work
 Disable group scheduling, smp - faircoop scheduler doesn't support either right now
 Disable cgroup - control mechanism for groups
@@ -13,8 +15,126 @@ Recent patches onto the mainline, have fixed the locking mess regarding hrtimer 
 
 	--> Our implementation is not affected by this, since we only arm the hrtimer residing on the local cpu.
 
-To do.
+** Domains **
+
+The mechanism to join domains in the current scheduler is flawed. The only way to join a domain is by making a coop_poll call with that domain id. This does not prevent a task from calling coop_poll with a different domain id, later during its execution. The mechanism for joining and leaving a domain should be independent of the coop_poll() call.
+
+The proposed API is:
+	1. A task joins a coop domain, when it makes its first coop poll call
+	2. A task is not allowed to change its domain after this.
+	3. The only way a task can change its domain, is to first leave its current domain, become a normal bvt task and then join another domain
+	4. It uses the coop poll syscall to leave a domain
+		4.1 Or it can also be forcibly removed from the domain via policing
+		4.2 In both cases the task also ceases to be a coop realtime task
+
+Invariants:
+	1. Whenever a task is running its deadline info is not present in any of the coop heaps
+	2. Its deadline info is in the timeout global/local heap only when it is runnable , but not running
+	3. Its deadline info is in the sleep global/local heap when it is sleeping in coop poll or sys_nanosleep
+
+** Domain accounting **
+Domain transition functions
+
+1. do_policing -> From coop realtime domain to best effort domain
+2. set_tsk_as_coop / set_tsk_as_temp_coop -> From best effort domain to coop realtime domain
+
+Both these functions should modify the number of tasks in the domain if and only if the task is runnable
+
+Runqueue transition functions
+1. bvt_borrow -> enqueue a task , increment the number of tasks in the domain
+2. dequeue_task_faircoop -> dequeue a task , decrement the number of tasks in the domain
+
+** Special temp coop domain **
+
+This domain is used for all the tasks which are being treated as a coop realtime task only for a very short amount of time. Nanosleep calls would transition a task into this domain.
+
+
+Properties for this domain
+
+1. The tasks DO NOT share their virtual time
+2. Each of them has an entry in the bvt queue
+3. Each of them also has an entry in the domain/global timeout/sleep queue 
+4. Each task is represented by itself in the bvt queue (unlike in a ordinary coop realtime domain, wherein one tasks represents all the tasks in the domain)
+5.
+** Coop poll Tasks **
+
+Invariants
+1. All coop poll tasks must have an entry either of the following
+	a. timeout queue
+	b. asap queue
+	c. sleep queue
+2. All runnable coop poll tasks must have an entry in either of the following
+	a. timeout queue
+	b. asap queue
+
+
+** Using a sleep call as am implicit half coop poll call **
+
+If the task is already a coop realtime task, then do a normal sys_nanosleep call.(This call WILL cause the task to be policed). 
+Else:
+	-> Calculate deadline info
+	-> Mark the task as coop realtime
+	-> Set its domain as DOM_COOPREALTIME_TEMP 
+	-> Insert deadline info into the sleep heap
+	-> On the way out of the sleep call revoke its membership and coop realtime status
+
+How to measure the performance improvement made by this change ?
+	-> This change essentially makes the sleep calls more accurate
+	-> Jitter values in mplayer or vlc ?
+	-> Real time audio processing software under load (synthetic load like bash busy loops)
+	-> Test program to check for the accuracy of a sys_nanosleep call
+
+** Coop poll User API **
+
+coop_poll(input_param, output_param, domain_id)
+	case 1:
+	input_param_deadline = 0
+	input_param_asap = 0
+	dom_id = Valid domain id
+
+	Only query the kernel for the highest priority asap in that domain
+	and the globally earliest deadline.This call does not transition the
+	task into coop realtime state
+
+	case 2:	
+	Either of the following is non zero:
+	input_param_deadline 
+	input_param_asap 
+	dom_id = Valid domain id
+
+	If the task is not coop realtime, transition it onto that state. Inform
+	kernel of deadline/asap info
+
+	case 3:
+	input_param = NULL
+	out_param = NULL
+	dom_id = DOM_LEAVE
+
+	Leave the current domain and transition the task into the best effort
+	domain. The task is no longer a coop realtime task after this call
+
+** Allow coop realtime tasks to sleep **
+
+By allowing coop realtime tasks to sleep we have opened up the possibility that there are runnable tasks in a domain, but they do
+have any corresponding deadline/asap info registered with the kernel. This was always possible but the problem wasn't exposed since, we only
+removed the deadline/asap info when a task made a coop_poll. This is INCORRECT !, this implies the choice made by choose_next_coop() is based
+on stale information.
+
+The only way to join a domain is by doing a coop poll --> Inform the kernel of asap/timeout info
+The only way to leave a domain is by doing a explicit dom_leave coop poll call
+
+If choose_next_coop() is invoked with no timeout/asap info, How would one go about choosing the most approriate task ?
+	-> Round robin among them
+
+** Concept of domains **
+
+Domains are a machanism via which the user application can do their own cooperative user level scheduling.Each domain is given a cpu share
+proportional to the number of tasks in the domain. It is upto the user application to divide this cpu amongst all the tasks in the domain.
+This is done via the coop_poll syscall. Any task not cooperating will be thrown out of its current domain by the kernel.
+
+The task can sleep 
+** To do **
 
 1. Make our scheduler group aware
 2. Make our scheduler cgroups aware
-
+3. Make it SMP aware
