@@ -129,7 +129,7 @@ typedef struct _coop_queue coop_queue;
 
 struct coop_struct 
 {
-        /* These are backpointers to its corresponding 
+     /* These are backpointers to its corresponding 
 	 * heap nodes of the ASAP and deadline heaps to 
 	 * which this process was a member.
 	 */
@@ -169,11 +169,9 @@ struct coop_struct
 #define SET_HAVE_ASAP(coop_param) (coop_param).have_asap = 1;
 #define GET_HAVE_ASAP(coop_param) (coop_param).have_asap
 
-#define is_coop(tsk) (tsk)->cf.coop_t.is_coop_task
+#define is_coop_realtime(tsk) (tsk)->cf.coop_t.is_coop_task
 #define set_coop_task(tsk) (tsk)->cf.coop_t.is_coop_task = 1;
 #define clear_coop_task(tsk) (tsk)->cf.coop_t.is_coop_task = 0;
-
-extern inline int is_coop_realtime(struct task_struct* tsk);
 
 /* used in fs/proc/proc_misc.c */
 extern struct file_operations proc_coopstat_operations;
@@ -186,9 +184,6 @@ coop_queue* cpu_cq(int,int);
 int find_coop_period(struct task_struct *next, 
 		     struct task_struct **next_coop,
 		     struct timespec* coop_prd);
-long insert_into_coop_heaps(coop_queue *cq,
-			    struct task_struct *p, 
-			    int which_heap); 
 void choose_next_coop(struct task_struct** target_task, int dom_id);
 void test_remove_task_from_coop_bvt_queues(struct task_struct *tsk, 
 					   coop_queue *cq);
@@ -196,5 +191,9 @@ void find_next_nearest_global_deadlines(struct task_struct *next_earliest_deadli
 void find_second_nearest_global_deadline_overall(struct task_struct **overall);
 void set_normalized_timeval(struct timeval *tv, time_t sec, long usec);
 gboolean coop_poll_timeout_gt(heap_key_t a, heap_key_t b);
-
+long insert_task_into_timeout_queue(struct timeval*,coop_queue*,
+									struct task_struct*,int);
+long insert_task_into_sleep_queue(struct timeval*,coop_queue*,
+									struct task_struct*,int);
+void set_tsk_as_temp_coop(struct task_struct*);
 #endif /* _LINUX_COOP_POLL_H */

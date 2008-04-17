@@ -178,7 +178,5 @@ struct bvtqueue* get_cpu_bq_locked(int cpu, unsigned long *flags);
 void put_cpu_bq_locked(int cpu, unsigned long *flags);
 struct bvtqueue* cpu_bq(int cpu);
 struct bvtqueue* get_task_bq(struct task_struct *tsk);
-#
-
 #endif /*  _LINUX_BVT_SCHEDULE_H */
 
