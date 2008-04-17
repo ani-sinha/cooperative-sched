@@ -96,7 +96,6 @@ struct bvtqueue
 	 * calculate the coop period
 	 */
 	struct timeval last_coop_deadline;
-	struct timeval upcoming_deadline;
 	struct timespec max_virtual_time;
 	int isTargetSet;
 	bool fudged_flag;
@@ -179,7 +178,5 @@ struct bvtqueue* get_cpu_bq_locked(int cpu, unsigned long *flags);
 void put_cpu_bq_locked(int cpu, unsigned long *flags);
 struct bvtqueue* cpu_bq(int cpu);
 struct bvtqueue* get_task_bq(struct task_struct *tsk);
-#
-
 #endif /*  _LINUX_BVT_SCHEDULE_H */
 

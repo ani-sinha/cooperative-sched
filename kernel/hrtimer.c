@@ -43,8 +43,12 @@
 #include <linux/tick.h>
 #include <linux/seq_file.h>
 #include <linux/err.h>
-
 #include <asm/uaccess.h>
+
+#if defined(CONFIG_SCHED_COOPREALTIME)
+#include<linux/coop_poll.h>
+#include<linux/sched_fairshare.h>
+#endif
 
 /**
  * ktime_get - get the monotonic time in ktime_t format
@@ -1406,14 +1410,63 @@ asmlinkage long
 sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 {
 	struct timespec tu;
+	#if defined(XONFIG_SCHED_COOPREALTIME)
+	struct timeval deadline;
+	struct timeval tv_now;
+	struct bvtqueue *bq;
+	coop_queue *cq;
+	int was_cooprealtime;
+	unsigned long flags;
+	long ret;
+	#endif
 
 	if (copy_from_user(&tu, rqtp, sizeof(tu)))
 		return -EFAULT;
 
 	if (!timespec_valid(&tu))
 		return -EINVAL;
+		
+	#if defined(XONFIG_SCHED_COOPREALTIME)
+	/* Coop real time tasks do aren't allowed the special sys_nanosleep.
+	 * They can use the sys_coop_poll call itself for doing a nanosleep */
+	if (is_coop_realtime(current))
+		return  hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
 
-	return hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
+	do_gettimeofday(&tv_now);
+	set_normalized_timeval(&deadline, tu.tv_sec + tv_now.tv_sec, ((tu.tv_nsec + tv_now.tv_usec*NSEC_PER_USEC)/NSEC_PER_USEC));
+	
+	set_tsk_as_temp_coop(current);	
+	
+	bq = get_task_bq_locked(current,&flags);
+	cq = &(bq->cq[DOM_REALTIME_TEMP]);
+	
+	ret = insert_task_into_timeout_queue(&deadline,cq,current,1);
+	if (unlikely(ret < 0)){
+		remove_task_from_coop_queue(current, cq,0);
+		put_task_bq_locked(bq, &flags);
+		return ret;
+	}
+	
+	current->cf.coop_t.is_well_behaved = 1;
+	/* Give up the lock*/	
+	put_task_bq_locked(bq,&flags);
+	ret = hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
+	current->cf.coop_t.is_well_behaved = 0;
+	/* If the timeslice timer didn't ding it, then demote this task to the best effort domain*/
+	if(is_coop_realtime(current)) {
+		bq = get_task_bq_locked(current,&flags);
+		do_policing(bq,current);
+		bq->bvt_domains[DOM_REALTIME_TEMP].num_tasks--;
+		bq->bvt_domains[DOM_BEST_EFFORT].num_tasks++;
+		put_task_bq_locked(bq,&flags);
+	}		
+
+	return ret;
+	#else
+	return  hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
+
+
+	#endif
 }
 
 /*

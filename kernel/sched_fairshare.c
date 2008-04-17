@@ -23,6 +23,7 @@
  * May 22, 2007.
  * 
  * This is the joint work of all the following authors:
+ * Mayukh Saubhasik, mayukh@cs.ubc.ca
  * Anirban Sinha, anirbans@cs.ubc.ca
  * Charles 'Buck' Krasic, krasic@cs.ubc.ca
  * Ashvin Goel, ashvin@eecg.toronto.edu
@@ -310,7 +311,7 @@ static void find_fairshare_period(suseconds_t *fair_share_period,
 	if (nr_tasks) {
 		*fair_share_period = bvt_sched_granularity / nr_tasks;
 	}else {
-		printk (KERN_ERR "undefined fair share period: impossible, nrtasks = %d\n",nr_tasks);
+		printk (KERN_ERR "undefined fair share period: impossible, nrtasks = %d %d %d\n",nr_tasks,nr_besteffort,nr_realcoop);
 		BUG();
 	}
 	if (is_coop_realtime(next)) {
@@ -405,20 +406,20 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 
 	p->cf.bvt_dom->num_tasks++;
 
-       /* handle real coop wakeups seperately here */
-
+    /* handle real coop wakeups seperately here */
 	if (is_coop_realtime(p)) {
 
 		int dom_id = task_domain(p);
 
 		/* reinsert the coop nodes into the coop heap */
-		if (timeval_compare(&(p->cf.coop_t.dead_p.t_deadline), &tv_zero) > 0) {
+		if (timeval_compare(&(p->cf.coop_t.dead_p.t_deadline), 
+		&tv_zero) > 0) {
 			/* insert into timeout heap */
 			if (bq == NULL) {
 				printk(KERN_ERR "bq is null\n");
 				return;
 			}
-			insert_into_coop_heaps(&(bq->cq[dom_id]),p,COOP_TIMEOUT_HEAP);
+			insert_task_into_timeout_queue(NULL,&(bq->cq[dom_id]),p,0);
 			/* and remove from coop sleep queue */
 			remove_task_from_coop_queue(p, &(bq->cq[dom_id]),3);
 		}			
@@ -429,7 +430,9 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 			printk(KERN_ERR "bvt_dom is null\n");
 			return;
 		}
-		if (p->cf.bvt_dom->num_tasks >1) return;
+		if (task_domain(p) != DOM_REALTIME_TEMP && 
+			(p->cf.bvt_dom->num_tasks >1)) 
+			return;
 	} /* if */
 	
 	if (likely(!heap_is_empty(bq->bvt_heap))) {
@@ -509,7 +512,7 @@ static void update_virtual_times(struct task_struct *p)
 
 	/* Stats end */
 
-	if (is_coop_realtime(p)) 
+	if (is_coop_realtime(p) && task_domain(p) != DOM_REALTIME_TEMP) 
 		nr_realcoop = bq->bvt_domains[task_domain(p)].num_tasks;
 
 	/* note: nr_realcoop will be 0 only when a single real-coop
@@ -569,7 +572,6 @@ static enum hrtimer_restart handle_bvt_timeout(struct hrtimer *timer)
 		bq->bvt_domains[DOM_BEST_EFFORT].num_tasks++;
 		/* insert task back into heap */
 		insert_task_into_bvt_queue(bq,p); 
-
 		put_task_bq_locked(bq, &flags);
 
 	} /* if */
@@ -752,15 +754,8 @@ inline void tv_fairshare_now_adjusted(struct timeval *tv)
 }
 
 /* choose_next_bvt:
- * The heart of our algorithm. This is equivalent to 
- * the vanilla 2.6.20 kernel scheduling function 
- * sched_find_first_bit() stuff. 
- * This function chooses the next bvt process that has the 
- * least virtual time in the bvt heap.
- * @bq: the pointer to the per cpu bvt structure in the 
- * runqueue
- * @next: pointer to the pointer to the task_struct of the 
- * process we want to context switch into.
+ * Picks the next most eligible guy to run, and also updates upcoming deadline
+ * Upcoming deadline is used to calculate the timeslice
  */
 static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq) 
 {
@@ -770,7 +765,6 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
 	struct task_struct *next_earliest_deadline_task = NULL;
 	struct timeval tv_now;
 	struct timespec *next_virtual_time, *next_coop_virtual_time, *min_virt_time;
-	struct task_struct *upcoming_deadline_task = NULL;
 	struct timespec ts_diff;
 	struct timespec ts_zero;
 	struct timespec ts_fudge;
@@ -811,6 +805,7 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
 	find_nearest_global_deadline(&next_earliest_deadline_task);
 	set_normalized_timespec(&ts_fudge,0,bvt_sched_granularity*NSEC_PER_USEC);
 
+		    
 	/* Returns the wall time */
 	tv_fairshare_now_adjusted(&tv_now);
 
@@ -882,49 +877,7 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
 		printk(KERN_ERR "Virt time overflowed\n");
 		BUG();
 	}
-
-	/* Logic to adjust the target virtual time */
-	/* Adjust the target virt time whenever the next expired deadline passes by*/
-	/* The target virtual time now contains the time of the next upcoming deadline */
-	if ( (next) == next_earliest_deadline_task ) {
-		bq->adj++;
-		
-		/* need to find next global coop deadline (including coop sleeps) */
-		find_second_nearest_global_deadline_overall(&upcoming_deadline_task);
 	
-		/* If there is no upcoming deadline after this, then unset target virtual time*/
-		if (!upcoming_deadline_task) {
-			bq->adj--;
-			bq->noadj++;
-			bq->isTargetSet = -1;
-		}
-		else if ( (timeval_compare(&(upcoming_deadline_task->cf.coop_t.dead_p.t_deadline),&(tv_now)) <0)) {
-			bq->upcoming_deadline =  tv_now;
-			bq->isTargetSet = 1;
-		}
-		else {
-			bq->upcoming_deadline = upcoming_deadline_task->cf.coop_t.dead_p.t_deadline;
-			bq->isTargetSet = 1;
-		}
-
-	} 
-	else if(next_earliest_deadline_task) {
-		bq->noadj++;
-
-		if ( (timeval_compare(&(next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline),&(tv_now)) <0)) {
-			bq->upcoming_deadline =  tv_now;
-			bq->isTargetSet = 1;
-		}
-		else {
-			bq->upcoming_deadline = next_earliest_deadline_task->cf.coop_t.dead_p.t_deadline;
-			bq->isTargetSet = 1;
-		}
-
-	} 
-	else {
-		bq->isTargetSet = -1;
-	}
-
 	return next;
 }
 /* choose_next_bvt */
@@ -990,7 +943,15 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 	}
 	
 	next = choose_next_bvt(bq);
+	if (NULL == next)
+		return NULL;
+
 	bq->running_bvt_task = next;
+    /* BUG FIX: Remove this guy's entry from the timeout heap, since he is about to run*/
+	if(is_coop_realtime(next)) {
+		remove_task_from_coop_queue(next,
+ 								&(bq->cq[task_domain(next)]),0);
+	}
 	//next->cf.bvt_t.bvt_timeslice_start = ns_to_timespec(rq->clock);
 	next->cf.bvt_t.bvt_timeslice_start = bq->ts_now;
 	calculate_bvt_period(next);
@@ -1019,10 +980,10 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 void inline remove_task_from_bvt_queue(struct bvtqueue *bq, 
 				       struct task_struct *p)
 {
-	if (p->cf.task_sched_param->bheap_ptr) 
+	if (p->cf.task_sched_param->bheap_ptr) {
 		heap_delete(bq->bvt_heap,p->cf.task_sched_param->bheap_ptr);
-	p->cf.task_sched_param->bheap_ptr = NULL;
-
+		p->cf.task_sched_param->bheap_ptr = NULL;
+	}
 }
 /* remove_task_from_bvt_queue*/
 
@@ -1078,7 +1039,11 @@ void do_policing(struct bvtqueue *bq, struct task_struct *tsk)
 	 */
 	tsk->cf.bvt_t.private_sched_param.bvt_virtual_time = tsk->cf.task_sched_param->bvt_virtual_time;
 	tsk->cf.task_sched_param = &tsk->cf.bvt_t.private_sched_param;
-
+	
+	#if defined(CONFIG_SMP)
+	/* Unpin the task*/
+	set_cpus_allowed(tsk,cpu_online_map);
+	#endif
 	clear_coop_task(tsk);
 
 } /* do_policing */
@@ -1142,8 +1107,7 @@ void __init bvt_global_init()
 		bq->global_coop_deadline_heap = temp2;
 		bq->global_coop_sleep_heap = temp3;
 
-		if (unlikely(!bq->bvt_heap) || 
-		unlikely(!bq->global_coop_deadline_heap)) {
+		if (unlikely(!temp1 || !temp2 || !temp3)) {  
 			/* memory allocation error */
 			bvt_print_debug("unable to allocate memory for the bvt heap.");
 			panic("unable to allocate memory for the bvt heap");
@@ -1166,7 +1130,6 @@ void __init bvt_global_init()
 		}
 
 		memset(&(bq->last_coop_deadline),0,sizeof(struct timeval));
-		memset(&(bq->upcoming_deadline),0,sizeof(struct timeval));
 		memset(&(bq->max_virtual_time),0,sizeof(struct timespec));
 		memset(&(bq->tot_time),0,sizeof(struct timespec));
 		bq->isTargetSet = -1;
@@ -1310,9 +1273,7 @@ static void dequeue_task_faircoop(struct rq *rq, struct task_struct *p,int sleep
                 do_policing(bq,p);
             }
             else {
-                insert_into_coop_heaps(&(bq->cq[dom_id]),
-                               p,
-                               COOP_SLEEP_HEAP);
+				insert_task_into_sleep_queue(NULL,&(bq->cq[dom_id]),p,0);
             } /* else */
         } /* !p->exit_state */
     } else  {

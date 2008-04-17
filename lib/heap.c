@@ -2,6 +2,7 @@
  * heap implementation in Qstream (http://www.qstream.org)
  * Parts of the code uses userlevel glib library keywords that has
  * been ported to traditional C syntax using glib.h definitions
+ * - Mayukh Saubhasik, mayukh@cs.ubc.ca
  * - Anirban Sinha, anirbans@cs.ubc.ca
  * - Charles Krasic, krasic@cs.ubc.ca
  *
@@ -57,8 +58,7 @@
 	for(__i=1;__i<=heap->size;__i++) \
 		if(!(heap->nodes[__i]->key)) { \
 			printk(KERN_ERR "Heap got fucked at %s line %d, index with null entry = %d,heap size = %d\n",__func__,__LINE__, __i,heap->size); \
-			dump_stack(); \
-			panic("Halting"); \
+			BUG(); \
 		} \
 	} while(0)
 
@@ -362,11 +362,15 @@ void heap_delete(heap_t *heap, heap_node *node)
 	heap_key_t   key;
 	
 	g_assert(node);
-
 	g_assert(heap);
 
 	heap_is_correct(heap);
-	
+
+	if (node->index > heap->size || node->index < 1) {
+		printk(KERN_ERR "Incorrect index for heap node %d %d\n",heap->size,node->index);
+		BUG();
+	}
+
 	/* Replace the deleted value with whatever was last */
 	replacement = heap->nodes[heap->size];
 	key         = replacement->key;
