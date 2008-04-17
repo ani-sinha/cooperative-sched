@@ -23,6 +23,7 @@
  * May 22, 2007.
  * 
  * This is the joint work of all the following authors:
+ * Mayukh Saubhasik, mayukh@cs.ubc.ca
  * Anirban Sinha, anirbans@cs.ubc.ca
  * Charles 'Buck' Krasic, krasic@cs.ubc.ca
  * Ashvin Goel, ashvin@eecg.toronto.edu
@@ -948,7 +949,6 @@ static struct task_struct* __sched pick_next_task_arm_timer(struct rq *rq)
 	bq->running_bvt_task = next;
     /* BUG FIX: Remove this guy's entry from the timeout heap, since he is about to run*/
 	if(is_coop_realtime(next)) {
-		printk("del %d dom %d\n",next->pid,task_domain(next));
 		remove_task_from_coop_queue(next,
  								&(bq->cq[task_domain(next)]),0);
 	}
@@ -1039,6 +1039,7 @@ void do_policing(struct bvtqueue *bq, struct task_struct *tsk)
 	 */
 	tsk->cf.bvt_t.private_sched_param.bvt_virtual_time = tsk->cf.task_sched_param->bvt_virtual_time;
 	tsk->cf.task_sched_param = &tsk->cf.bvt_t.private_sched_param;
+	
 	#if defined(CONFIG_SMP)
 	/* Unpin the task*/
 	set_cpus_allowed(tsk,cpu_online_map);

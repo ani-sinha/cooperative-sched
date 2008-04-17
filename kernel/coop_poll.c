@@ -5,8 +5,9 @@
  * The system call number is 285
  * The original entry in #285 was sys_ni_syscall which is
  * a placeholder for non-implemented system calls.
- *  
- * Coded by Anirban Sinha, anirbans@cs.ubc.ca
+ * 
+ * Current Author:Mayukh Saubhasik mayukh@cs.ubc.ca
+ * Original Code by Anirban Sinha, anirbans@cs.ubc.ca
  * Other contributors: Charles Krasic, Ashvin Goel 
  * krasic@cs.ubc.ca, ashvin@eecg.toronto.edu
  *
@@ -276,8 +277,6 @@ long insert_task_into_timeout_queue(struct timeval *t_deadline,
 				    coop_queue *cq, struct task_struct *p,int fil_dead)
 {
 	struct timespec rank;
-
-	printk("Task %d cr flag %d dom %d timeout q insertion\n",p->pid,is_coop_realtime(p),task_domain(p));
 
 	g_assert(p);
 
@@ -779,18 +778,27 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	ko_param.have_asap  = 0;
 
 	/* Sanity checks */
-	/* check for valid domain id */
+	/* check for valid domain id, not allowed to join temp domain */
 
-	valid_dom_id = (dom_id >= 0    && 
-			dom_id <= (NR_COOP_DOMAINS -1));
+	valid_dom_id = ((dom_id >= 0    && 
+			dom_id <= (NR_COOP_DOMAINS -2)) || dom_id == DOM_LEAVE);
+	
 
 	if (!valid_dom_id) {
 		return -EINVAL;
 	}
 
-	if (i_param==NULL || o_param==NULL ) {
-		printk(KERN_ERR "Invalid parameters\n");
-		return -EINVAL;
+	if (dom_id == DOM_LEAVE) {
+		if (i_param != NULL || o_param !=NULL) {
+			printk(KERN_ERR "Invalid dom leave call\n");
+			return -EINVAL;
+		}
+	}
+	else {
+		if (i_param==NULL || o_param==NULL ) {
+			printk(KERN_ERR "Invalid parameters\n");
+			return -EINVAL;
+		}
 	}
 
 	if(current==NULL) {
@@ -801,6 +809,26 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	if(!is_bvt(current)) {
 		printk(KERN_ERR "Current task is not in faircoop scheduling class\n");
 		return -EINVAL;
+	}
+	
+	/* Only a coop realtime task can do a dom_leave call */
+	if (!is_coop_realtime(current) && dom_id == DOM_LEAVE) {
+		return -EINVAL;
+	}
+	
+	/* A coop realtime task is not allowed to change its domain mid-way*/
+	if (is_coop_realtime(current) && dom_id != DOM_LEAVE) {
+		if (dom_id != task_domain(current))
+			return -EINVAL;
+	}
+
+	if (dom_id == DOM_LEAVE) {
+	cq = task_cq_lock(current, dom_id, &flags, &bq); 
+	bq->bvt_domains[task_domain(current)].num_tasks--;	
+	do_policing(bq,current);
+	bq->bvt_domains[DOM_BEST_EFFORT].num_tasks++;	
+	cq_unlock(bq,&flags);
+	return 0;
 	}
 
 	/* copy input values to kernel space 

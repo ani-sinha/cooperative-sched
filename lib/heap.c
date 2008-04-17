@@ -2,6 +2,7 @@
  * heap implementation in Qstream (http://www.qstream.org)
  * Parts of the code uses userlevel glib library keywords that has
  * been ported to traditional C syntax using glib.h definitions
+ * - Mayukh Saubhasik, mayukh@cs.ubc.ca
  * - Anirban Sinha, anirbans@cs.ubc.ca
  * - Charles Krasic, krasic@cs.ubc.ca
  *
@@ -38,7 +39,6 @@
 #include <linux/hardirq.h>
 
 #define HEAP_EXPANSION_FACTOR 2
-#define FAIRCOOP_HEAP_DEBUG 1
 
 #ifndef MAX
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))

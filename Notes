@@ -70,10 +70,8 @@ Invariants
 
 ** Using a sleep call as am implicit half coop poll call **
 
-1. If a task is already a part of a coop domain, then then the sleep call will act as a half coop_poll call
-	-> Calculate deadline = current time + sleep time
-	-> Insert deadline info into the sleep heap (global and local)
-2. else 
+If the task is already a coop realtime task, then do a normal sys_nanosleep call.(This call WILL cause the task to be policed). 
+Else:
 	-> Calculate deadline info
 	-> Mark the task as coop realtime
 	-> Set its domain as DOM_COOPREALTIME_TEMP 
@@ -84,7 +82,8 @@ How to measure the performance improvement made by this change ?
 	-> This change essentially makes the sleep calls more accurate
 	-> Jitter values in mplayer or vlc ?
 	-> Real time audio processing software under load (synthetic load like bash busy loops)
-	->
+	-> Test program to check for the accuracy of a sys_nanosleep call
+
 ** Coop poll User API **
 
 coop_poll(input_param, output_param, domain_id)
