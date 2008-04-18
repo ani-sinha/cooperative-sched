@@ -108,7 +108,7 @@ static int
 move_one_task_faircoop(struct rq *this_rq, int this_cpu, struct rq *busiest,
 		   struct sched_domain *sd, enum cpu_idle_type idle);
 
-static void select_task_rq_faircoop(struct task_struct *p, int sync);
+static int select_task_rq_faircoop(struct task_struct *p, int sync);
 static void join_domain_faircoop(struct rq* rq);
 static void leave_domain_faircoop(struct rq* rq);
 #endif
@@ -131,7 +131,7 @@ static const struct sched_class faircoop_sched_class = {
 	.move_one_task 	= move_one_task_faircoop,
 	.select_task_rq = select_task_rq_faircoop,
 	.join_domain = join_domain_faircoop,
-	.leave_domain = leave_domain_faircoop
+	.leave_domain = leave_domain_faircoop,
 #endif
 
 	.prio_changed = prio_changed_faircoop,
@@ -1301,7 +1301,7 @@ move_one_task_faircoop(struct rq *this_rq, int this_cpu, struct rq *busiest,
 	return 0;
 }
 
-static void select_task_rq_faircoop(struct task_struct *p, int sync)
+static int select_task_rq_faircoop(struct task_struct *p, int sync)
 {
 }
 
