@@ -389,16 +389,19 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 
 	if(rq == NULL) {
 		printk(KERN_ERR "rq null\n");
+		BUG();
 		return;
 	}
 	
 	if(p == NULL) {
 		printk(KERN_ERR "Task is null\n");
+		BUG();
 		return;
 	}
 
 	if(!is_bvt(p)) {
 		printk(KERN_ERR "Task is not in faircoop scheduling class\n");
+		BUG();
 		return;
 	}
 	
