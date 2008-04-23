@@ -393,7 +393,7 @@ static int cm_alloc_id(struct cm_id_private *cm_id_priv)
 		spin_unlock_irqrestore(&cm.lock, flags);
 	} while( (ret == -EAGAIN) && idr_pre_get(&cm.local_id_table, GFP_KERNEL) );
 
-	cm_id_priv->id.local_id = (__force __be32) (id ^ cm.random_id_operand);
+	cm_id_priv->id.local_id = (__force __be32)id ^ cm.random_id_operand;
 	return ret;
 }
 
@@ -3759,6 +3759,7 @@ static void cm_remove_one(struct ib_device *device)
 		port = cm_dev->port[i-1];
 		ib_modify_port(device, port->port_num, 0, &port_modify);
 		ib_unregister_mad_agent(port->mad_agent);
+		flush_workqueue(cm.wq);
 		cm_remove_port_fs(port);
 	}
 	kobject_put(&cm_dev->dev_obj);
@@ -3813,6 +3814,7 @@ static void __exit ib_cm_cleanup(void)
 		cancel_delayed_work(&timewait_info->work.work);
 	spin_unlock_irq(&cm.lock);
 
+	ib_unregister_client(&cm_client);
 	destroy_workqueue(cm.wq);
 
 	list_for_each_entry_safe(timewait_info, tmp, &cm.timewait_list, list) {
@@ -3820,7 +3822,6 @@ static void __exit ib_cm_cleanup(void)
 		kfree(timewait_info);
 	}
 
-	ib_unregister_client(&cm_client);
 	class_unregister(&cm_class);
 	idr_destroy(&cm.local_id_table);
 }

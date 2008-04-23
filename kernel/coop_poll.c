@@ -778,10 +778,10 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	ko_param.have_asap  = 0;
 
 	/* Sanity checks */
-	/* check for valid domain id, not allowed to join temp domain */
+	/* check for valid domain id*/
 
 	valid_dom_id = ((dom_id >= 0    && 
-			dom_id <= (NR_COOP_DOMAINS -2)) || dom_id == DOM_LEAVE);
+			dom_id <= (NR_COOP_DOMAINS -1)) || dom_id == DOM_LEAVE);
 	
 
 	if (!valid_dom_id) {
@@ -871,7 +871,10 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	}
 
 	if (!is_coop_realtime(current)) {
-		set_tsk_as_coop(current, dom_id);
+		if (dom_id != DOM_REALTIME_TEMP)
+			set_tsk_as_coop(current, dom_id);
+		else
+			set_tsk_as_temp_coop(current);
 	}
 	
 	current->cf.coop_t.is_well_behaved = 1;

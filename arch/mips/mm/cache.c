@@ -30,6 +30,9 @@ void (*flush_cache_page)(struct vm_area_struct *vma, unsigned long page,
 	unsigned long pfn);
 void (*flush_icache_range)(unsigned long start, unsigned long end);
 
+void (*__flush_cache_vmap)(void);
+void (*__flush_cache_vunmap)(void);
+
 /* MIPS specific cache operations */
 void (*flush_cache_sigtramp)(unsigned long addr);
 void (*local_flush_data_cache_page)(void * addr);
@@ -127,9 +130,10 @@ void __update_cache(struct vm_area_struct *vma, unsigned long address,
 	}
 }
 
-static char cache_panic[] __initdata = "Yeee, unsupported cache architecture.";
+static char cache_panic[] __cpuinitdata =
+	"Yeee, unsupported cache architecture.";
 
-void __init cpu_cache_init(void)
+void __devinit cpu_cache_init(void)
 {
 	if (cpu_has_3k_cache) {
 		extern void __weak r3k_cache_init(void);

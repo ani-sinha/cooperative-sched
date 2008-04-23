@@ -1982,7 +1982,10 @@ static sctp_ierror_t sctp_verify_param(const struct sctp_association *asoc,
 					struct sctp_chunk *chunk,
 					struct sctp_chunk **err_chunk)
 {
+	struct sctp_hmac_algo_param *hmacs;
 	int retval = SCTP_IERROR_NO_ERROR;
+	__u16 n_elt, id = 0;
+	int i;
 
 	/* FIXME - This routine is not looking at each parameter per the
 	 * chunk type, i.e., unrecognized parameters should be further
@@ -2056,9 +2059,29 @@ static sctp_ierror_t sctp_verify_param(const struct sctp_association *asoc,
 		break;
 
 	case SCTP_PARAM_HMAC_ALGO:
-		if (sctp_auth_enable)
-			break;
-		/* Fall Through */
+		if (!sctp_auth_enable)
+			goto fallthrough;
+
+		hmacs = (struct sctp_hmac_algo_param *)param.p;
+		n_elt = (ntohs(param.p->length) - sizeof(sctp_paramhdr_t)) >> 1;
+
+		/* SCTP-AUTH: Section 6.1
+		 * The HMAC algorithm based on SHA-1 MUST be supported and
+		 * included in the HMAC-ALGO parameter.
+		 */
+		for (i = 0; i < n_elt; i++) {
+			id = ntohs(hmacs->hmac_ids[i]);
+
+			if (id == SCTP_AUTH_HMAC_ID_SHA1)
+				break;
+		}
+
+		if (id != SCTP_AUTH_HMAC_ID_SHA1) {
+			sctp_process_inv_paramlength(asoc, param.p, chunk,
+						     err_chunk);
+			retval = SCTP_IERROR_ABORT;
+		}
+		break;
 fallthrough:
 	default:
 		SCTP_DEBUG_PRINTK("Unrecognized param: %d for chunk %d.\n",
@@ -2374,6 +2397,14 @@ static int sctp_process_param(struct sctp_association *asoc,
 		 */
 		asoc->peer.ipv4_address = 0;
 		asoc->peer.ipv6_address = 0;
+
+		/* Assume that peer supports the address family
+		 * by which it sends a packet.
+		 */
+		if (peer_addr->sa.sa_family == AF_INET6)
+			asoc->peer.ipv6_address = 1;
+		else if (peer_addr->sa.sa_family == AF_INET)
+			asoc->peer.ipv4_address = 1;
 
 		/* Cycle through address types; avoid divide by 0. */
 		sat = ntohs(param.p->length) - sizeof(sctp_paramhdr_t);

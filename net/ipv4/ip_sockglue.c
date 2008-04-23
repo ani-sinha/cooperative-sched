@@ -583,7 +583,7 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 		}
 
 		if (!mreq.imr_ifindex) {
-			if (mreq.imr_address.s_addr == INADDR_ANY) {
+			if (mreq.imr_address.s_addr == htonl(INADDR_ANY)) {
 				inet->mc_index = 0;
 				inet->mc_addr  = 0;
 				err = 0;
@@ -1132,7 +1132,7 @@ static int do_ip_getsockopt(struct sock *sk, int level, int optname,
 	}
 	release_sock(sk);
 
-	if (len < sizeof(int) && len > 0 && val>=0 && val<255) {
+	if (len < sizeof(int) && len > 0 && val>=0 && val<=255) {
 		unsigned char ucval = (unsigned char)val;
 		len = 1;
 		if (put_user(len, optlen))

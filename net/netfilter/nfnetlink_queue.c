@@ -224,7 +224,7 @@ nfqnl_build_packet_message(struct nfqnl_instance *queue,
 	struct net_device *indev;
 	struct net_device *outdev;
 
-	size =    NLMSG_ALIGN(sizeof(struct nfgenmsg))
+	size =    NLMSG_SPACE(sizeof(struct nfgenmsg))
 		+ nla_total_size(sizeof(struct nfqnl_msg_packet_hdr))
 		+ nla_total_size(sizeof(u_int32_t))	/* ifindex */
 		+ nla_total_size(sizeof(u_int32_t))	/* ifindex */
@@ -703,19 +703,12 @@ nfqnl_recv_config(struct sock *ctnl, struct sk_buff *skb,
 		/* Commands without queue context - might sleep */
 		switch (cmd->command) {
 		case NFQNL_CFG_CMD_PF_BIND:
-			ret = nf_register_queue_handler(ntohs(cmd->pf),
-							&nfqh);
-			break;
+			return nf_register_queue_handler(ntohs(cmd->pf),
+							 &nfqh);
 		case NFQNL_CFG_CMD_PF_UNBIND:
-			ret = nf_unregister_queue_handler(ntohs(cmd->pf),
-							  &nfqh);
-			break;
-		default:
-			break;
+			return nf_unregister_queue_handler(ntohs(cmd->pf),
+							   &nfqh);
 		}
-
-		if (ret < 0)
-			return ret;
 	}
 
 	rcu_read_lock();
@@ -903,9 +896,6 @@ static const struct file_operations nfqnl_file_ops = {
 static int __init nfnetlink_queue_init(void)
 {
 	int i, status = -ENOMEM;
-#ifdef CONFIG_PROC_FS
-	struct proc_dir_entry *proc_nfqueue;
-#endif
 
 	for (i = 0; i < INSTANCE_BUCKETS; i++)
 		INIT_HLIST_HEAD(&instance_table[i]);
@@ -918,11 +908,9 @@ static int __init nfnetlink_queue_init(void)
 	}
 
 #ifdef CONFIG_PROC_FS
-	proc_nfqueue = create_proc_entry("nfnetlink_queue", 0440,
-					 proc_net_netfilter);
-	if (!proc_nfqueue)
+	if (!proc_create("nfnetlink_queue", 0440,
+			 proc_net_netfilter, &nfqnl_file_ops))
 		goto cleanup_subsys;
-	proc_nfqueue->proc_fops = &nfqnl_file_ops;
 #endif
 
 	register_netdevice_notifier(&nfqnl_dev_notifier);

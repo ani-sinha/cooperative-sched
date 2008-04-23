@@ -382,7 +382,7 @@ static int vlan_dev_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		vlan_dev_info(dev)->cnt_encap_on_xmit++;
 
 		pr_debug("%s: proto to encap: 0x%hx\n",
-			 __FUNCTION__, htons(veth->h_vlan_proto));
+			 __FUNCTION__, ntohs(veth->h_vlan_proto));
 		/* Construct the second two bytes. This field looks something
 		 * like:
 		 * usr_priority: 3 bits	 (high bits)
@@ -660,7 +660,7 @@ static int vlan_dev_init(struct net_device *dev)
 	int subclass = 0;
 
 	/* IFF_BROADCAST|IFF_MULTICAST; ??? */
-	dev->flags  = real_dev->flags & ~IFF_UP;
+	dev->flags  = real_dev->flags & ~(IFF_UP | IFF_PROMISC | IFF_ALLMULTI);
 	dev->iflink = real_dev->ifindex;
 	dev->state  = (real_dev->state & ((1<<__LINK_STATE_NOCARRIER) |
 					  (1<<__LINK_STATE_DORMANT))) |
@@ -692,6 +692,20 @@ static int vlan_dev_init(struct net_device *dev)
 	return 0;
 }
 
+static void vlan_dev_uninit(struct net_device *dev)
+{
+	struct vlan_priority_tci_mapping *pm;
+	struct vlan_dev_info *vlan = vlan_dev_info(dev);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(vlan->egress_priority_map); i++) {
+		while ((pm = vlan->egress_priority_map[i]) != NULL) {
+			vlan->egress_priority_map[i] = pm->next;
+			kfree(pm);
+		}
+	}
+}
+
 void vlan_setup(struct net_device *dev)
 {
 	ether_setup(dev);
@@ -701,6 +715,7 @@ void vlan_setup(struct net_device *dev)
 
 	dev->change_mtu		= vlan_dev_change_mtu;
 	dev->init		= vlan_dev_init;
+	dev->uninit		= vlan_dev_uninit;
 	dev->open		= vlan_dev_open;
 	dev->stop		= vlan_dev_stop;
 	dev->set_mac_address	= vlan_dev_set_mac_address;
