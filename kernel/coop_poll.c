@@ -804,6 +804,8 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 	}
 
 	if(!is_bvt(current)) {
+		printk(KERN_ERR "Non faircoop tsk=%d,using coop_poll()\n",
+		current->pid);
 		return -EINVAL;
 	}
 	
