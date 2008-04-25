@@ -37,7 +37,7 @@ pid_t pid;
 #define COOP_DEAD_FUDGE_INC 100000 /* in nsecs, 100 microsecs */
 #define COOP_DEAD_FUDGE_MAX 500000000 /* in nsecs, 500 ms */
 /* Slack constants */
-#define COOP_DEAD_SLACK 1000000 /* in nsecs , set 1 ms */
+#define COOP_DEAD_SLACK 1000000 /* in nsecs , set 10 ms */
 
 /* This is the main per cpu bvt queue structure 
  * This is a member of struct runqueue 

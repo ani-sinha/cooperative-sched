@@ -790,24 +790,20 @@ asmlinkage long sys_coop_poll(struct coop_param_t __user *i_param,
 
 	if (dom_id == DOM_LEAVE) {
 		if (i_param != NULL || o_param !=NULL) {
-			printk(KERN_ERR "Invalid dom leave call\n");
 			return -EINVAL;
 		}
 	}
 	else {
 		if (i_param==NULL || o_param==NULL ) {
-			printk(KERN_ERR "Invalid parameters\n");
 			return -EINVAL;
 		}
 	}
 
 	if(current==NULL) {
-		printk(KERN_ERR "Current task is invalid\n");
 		return -EINVAL;
 	}
 
 	if(!is_bvt(current)) {
-		printk(KERN_ERR "Current task is not in faircoop scheduling class\n");
 		return -EINVAL;
 	}
 	

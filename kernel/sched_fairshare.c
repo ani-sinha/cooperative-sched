@@ -400,7 +400,7 @@ static void bvt_borrow(struct rq *rq,struct task_struct *p,int wakeup)
 	}
 
 	if(!is_bvt(p)) {
-		printk(KERN_ERR "Task is not in faircoop scheduling class\n");
+		printk(KERN_ERR "Task being enqueued is not in faircoop scheduling class\n");
 		BUG();
 		return;
 	}
@@ -571,6 +571,8 @@ static enum hrtimer_restart handle_bvt_timeout(struct hrtimer *timer)
 		struct bvtqueue *bq = get_task_bq_locked(p, &flags); 
 		
 		test_remove_task_from_coop_bvt_queues(p, &(bq->cq[dom_id]));
+		bq->adj++;
+		bq->noadj=p->pid;
 		do_policing(bq,p);
 		bq->bvt_domains[DOM_BEST_EFFORT].num_tasks++;
 		/* insert task back into heap */
@@ -1195,8 +1197,8 @@ static int show_bvtstat(struct seq_file *seq, void *v) {
 		bq = cpu_bq(cpu);
 		seq_printf(seq, "current bvt period (cpu %d) = %ld nsec\n", 
 			   cpu,(long) timespec_to_ns(&bq->curr_bvt_period));
-		seq_printf(seq, "adjustments: %ld\n", bq->adj);
-		seq_printf(seq, "no adjustments: %ld\n", bq->noadj);
+		seq_printf(seq, "Policed: %ld\n", bq->adj);
+		seq_printf(seq, "Last policed pid = %d\n",bq->noadj);
 		seq_printf(seq, "fudge: %ld\n", bq->fudge);
 		seq_printf(seq, "nofudge: %ld\n", bq->nofudge);
 		seq_printf(seq, "Current Fudge in nsecs = %ld000\n", bvt_sched_granularity);
@@ -1273,7 +1275,9 @@ static void dequeue_task_faircoop(struct rq *rq, struct task_struct *p,int sleep
     	/* Only check for policing, if the task is going to sleep */ 
         if (!p->exit_state && sleep) {
             if(!p->cf.coop_t.is_well_behaved) {
-                do_policing(bq,p);
+                bq->adj++;
+				bq->noadj=p->pid;
+				do_policing(bq,p);
             }
             else {
 				insert_task_into_sleep_queue(NULL,&(bq->cq[dom_id]),p,0);
