@@ -861,6 +861,15 @@ static struct task_struct* __sched choose_next_bvt(struct bvtqueue *bq)
 				} else {
 					/* Don't fudge*/
 					bq->nofudge++;
+					/* Police the task for burning its temporary unfairness threshold*/
+					test_remove_task_from_coop_bvt_queues(next_overall_coop_task, &(bq->cq[task_domain(next_overall_coop_task)]));
+					bq->adj++;
+					bq->noadj=next_overall_coop_task->pid;
+					do_policing(bq,next_overall_coop_task);
+					bq->bvt_domains[DOM_BEST_EFFORT].num_tasks++;
+					/* insert task back into heap */
+					insert_task_into_bvt_queue(bq,next_overall_coop_task); 
+
 				} /* else */
 			
 			bq->count++;	

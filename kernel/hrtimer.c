@@ -1410,7 +1410,7 @@ asmlinkage long
 sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 {
 	struct timespec tu;
-	#if defined(XONFIG_SCHED_COOPREALTIME)
+	#if defined(CONFIG_SCHED_COOP_NANOSLEEP)
 	struct timeval deadline;
 	struct timeval tv_now;
 	struct bvtqueue *bq;
@@ -1426,7 +1426,7 @@ sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp)
 	if (!timespec_valid(&tu))
 		return -EINVAL;
 		
-	#if defined(XONFIG_SCHED_COOPREALTIME)
+	#if defined(CONFIG_SCHED_COOP_NANOSLEEP)
 	/* Coop real time tasks do aren't allowed the special sys_nanosleep.
 	 * They can use the sys_coop_poll call itself for doing a nanosleep */
 	if (is_coop_realtime(current))

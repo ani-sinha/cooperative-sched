@@ -526,6 +526,18 @@ config SCHED_MC
 config SCHED_COOPREALTIME
 	bool "UBC fairshare coop scheduler support"
 	default y
+	help
+		Introduces a new scheduling class faircoop, which uses
+		a explicit deadline information received from the user application
+		to reduce scheduling latency to almost zero
+
+config SCHED_COOP_NANOSLEEP
+	bool "UBC fairshare super accurate nanosleep"
+	default y
+	depends on SCHED_COOPREALTIME
+	help
+		Converts nanosleep calls to partial coop poll calls, reducing
+		scheduling latency to almost zero
 
 source "kernel/Kconfig.preempt"
 
