@@ -233,8 +233,24 @@ static int min_wakeup_granularity_ns;			/* 0 usecs */
 static int max_wakeup_granularity_ns = NSEC_PER_SEC;	/* 1 second */
 #endif
 
+#if defined(CONFIG_SCHED_COOPREALTIME)
+static suseconds_t min_bvt_sched_granularity = 100;  /* 100 usecs */
+static suseconds_t max_bvt_sched_granularity = 1000000; /* 1 second */
+#endif
+
 static struct ctl_table kern_table[] = {
 #if defined(CONFIG_SCHED_COOPREALTIME)
+    {    
+	 .ctl_name   = CTL_UNNUMBERED,
+	 .procname   = "bvt_sched_period_us",
+	 .data       = &bvt_sched_granularity,
+	 .maxlen     = sizeof(suseconds_t),
+	 .mode       = 0644,
+	 .proc_handler = &proc_dointvec_minmax,
+	 .strategy   = &sysctl_intvec,
+	 .extra1     = &min_bvt_sched_granularity,
+	 .extra2     = &max_bvt_sched_granularity,
+	},
 	{
 	.ctl_name   = KERN_SCHED_TRACING,
 	.procname   = "bvt_sched_tracing",
