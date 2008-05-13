@@ -14,7 +14,7 @@
 #include <linux/coop_sched_domains.h>
 #include <linux/coop_poll.h>
 
-#define BVT_MIN_TIMESLICE 200 /* in usec */
+#define BVT_MIN_TIMESLICE 100 /* in usec */
 extern struct timespec ts_bvt_min_timeslice;
 extern volatile suseconds_t bvt_sched_granularity;
 extern volatile unsigned int bvt_sched_tracing;
